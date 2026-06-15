@@ -10,6 +10,10 @@ import { MemoryView } from '@/components/agent-os/memory-view';
 import { TasksView } from '@/components/agent-os/tasks-view';
 import { AutomationsView } from '@/components/agent-os/automations-view';
 import { TeamsView } from '@/components/agent-os/teams-view';
+import { SkillsView } from '@/components/agent-os/skills-view';
+import { GoalsView } from '@/components/agent-os/goals-view';
+import { VoiceView } from '@/components/agent-os/voice-view';
+import { McpView } from '@/components/agent-os/mcp-view';
 
 function ViewRenderer() {
   const { activeView } = useAppStore();
@@ -29,6 +33,14 @@ function ViewRenderer() {
       return <AutomationsView />;
     case 'teams':
       return <TeamsView />;
+    case 'skills':
+      return <SkillsView />;
+    case 'goals':
+      return <GoalsView />;
+    case 'voice':
+      return <VoiceView />;
+    case 'mcp':
+      return <McpView />;
     default:
       return <Dashboard />;
   }
@@ -66,7 +78,7 @@ export default function Home() {
             </svg>
           </div>
           <div className="text-center">
-            <h2 className="text-lg font-bold text-foreground">Initializing Agent OS</h2>
+            <h2 className="text-lg font-bold text-foreground">Initializing Hermes Agent OS</h2>
             <p className="text-sm text-muted-foreground mt-1">Loading system components...</p>
           </div>
         </div>

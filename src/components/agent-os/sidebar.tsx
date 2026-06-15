@@ -12,6 +12,10 @@ import {
   ChevronLeft,
   ChevronRight,
   Terminal,
+  Wrench,
+  Target,
+  Mic,
+  Plug,
 } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Separator } from '@/components/ui/separator';
@@ -25,6 +29,10 @@ const navItems: { view: ActiveView; label: string; icon: React.ElementType }[] =
   { view: 'tasks', label: 'Tasks', icon: Kanban },
   { view: 'automations', label: 'Automations', icon: Zap },
   { view: 'teams', label: 'Teams', icon: Users },
+  { view: 'skills', label: 'Skills', icon: Wrench },
+  { view: 'goals', label: 'Goals', icon: Target },
+  { view: 'voice', label: 'Voice', icon: Mic },
+  { view: 'mcp', label: 'MCP', icon: Plug },
 ];
 
 export function Sidebar() {
@@ -44,14 +52,14 @@ export function Sidebar() {
         </div>
         {sidebarOpen && (
           <div className="flex flex-col">
-            <span className="text-sm font-bold text-emerald-400">Agent OS</span>
-            <span className="text-[10px] text-muted-foreground">v1.0.0</span>
+            <span className="text-sm font-bold text-emerald-400">Hermes Agent OS</span>
+            <span className="text-[10px] text-muted-foreground">v2.0.0</span>
           </div>
         )}
       </div>
 
       {/* Navigation */}
-      <nav className="flex-1 py-2 px-2 space-y-1">
+      <nav className="flex-1 py-2 px-2 space-y-1 overflow-y-auto">
         {navItems.map((item) => {
           const Icon = item.icon;
           const isActive = activeView === item.view;

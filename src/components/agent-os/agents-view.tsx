@@ -33,6 +33,12 @@ import {
   Bot,
   ChevronRight,
   X,
+  Wrench,
+  Target,
+  Lightbulb,
+  Pencil,
+  Save,
+  Users,
 } from 'lucide-react';
 import { useToast } from '@/hooks/use-toast';
 
@@ -44,12 +50,16 @@ interface Agent {
   status: string;
   avatar: string | null;
   systemPrompt: string | null;
+  soulMd: string | null;
   model: string;
   teamId: string | null;
   team?: { id: string; name: string; color: string } | null;
   tasks?: { id: string; title: string; status: string }[];
   memories?: { id: string; title: string }[];
   conversations?: { id: string; title: string }[];
+  skills?: { id: string; name: string; category: string; isAutoLearned: boolean; usageCount: number }[];
+  goals?: { id: string; title: string; status: string; progress: number }[];
+  delegates?: { id: string; name: string; status: string; task: string }[];
 }
 
 const statusColors: Record<string, string> = {
@@ -75,12 +85,36 @@ const typeColors: Record<string, string> = {
   orchestration: 'bg-emerald-500/20 text-emerald-400',
 };
 
+const categoryColors: Record<string, string> = {
+  general: 'bg-slate-500/20 text-slate-400',
+  research: 'bg-blue-500/20 text-blue-400',
+  coding: 'bg-purple-500/20 text-purple-400',
+  writing: 'bg-yellow-500/20 text-yellow-400',
+  automation: 'bg-emerald-500/20 text-emerald-400',
+  communication: 'bg-pink-500/20 text-pink-400',
+};
+
+const goalStatusColors: Record<string, string> = {
+  active: 'bg-emerald-500/20 text-emerald-400',
+  completed: 'bg-blue-500/20 text-blue-400',
+  abandoned: 'bg-slate-500/20 text-slate-400',
+};
+
+const delegateStatusColors: Record<string, string> = {
+  pending: 'bg-yellow-500/20 text-yellow-400',
+  running: 'bg-emerald-500/20 text-emerald-400',
+  completed: 'bg-blue-500/20 text-blue-400',
+  failed: 'bg-red-500/20 text-red-400',
+};
+
 export function AgentsView() {
   const { toast } = useToast();
   const [agents, setAgents] = useState<Agent[]>([]);
   const [selectedAgent, setSelectedAgent] = useState<Agent | null>(null);
   const [loading, setLoading] = useState(true);
   const [createOpen, setCreateOpen] = useState(false);
+  const [editingSoulMd, setEditingSoulMd] = useState(false);
+  const [soulMdValue, setSoulMdValue] = useState('');
   const [newAgent, setNewAgent] = useState({
     name: '',
     description: '',
@@ -142,6 +176,26 @@ export function AgentsView() {
     }
   }
 
+  async function updateSoulMd() {
+    if (!selectedAgent) return;
+    try {
+      const res = await fetch(`/api/agents/${selectedAgent.id}`, {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ soulMd: soulMdValue }),
+      });
+      if (res.ok) {
+        toast({ title: 'SOUL.md updated successfully' });
+        setEditingSoulMd(false);
+        loadAgents();
+        const detail = await (await fetch(`/api/agents/${selectedAgent.id}`)).json();
+        setSelectedAgent(detail);
+      }
+    } catch {
+      toast({ title: 'Failed to update SOUL.md', variant: 'destructive' });
+    }
+  }
+
   async function deleteAgent(id: string) {
     try {
       const res = await fetch(`/api/agents/${id}`, { method: 'DELETE' });
@@ -158,9 +212,14 @@ export function AgentsView() {
   async function selectAgent(agent: Agent) {
     try {
       const res = await fetch(`/api/agents/${agent.id}`);
-      if (res.ok) setSelectedAgent(await res.json());
+      if (res.ok) {
+        const data = await res.json();
+        setSelectedAgent(data);
+        setSoulMdValue(data.soulMd || '');
+      }
     } catch {
       setSelectedAgent(agent);
+      setSoulMdValue(agent.soulMd || '');
     }
   }
 
@@ -321,6 +380,47 @@ export function AgentsView() {
                     <p className="text-sm mt-1">{selectedAgent.description}</p>
                   </div>
 
+                  {/* SOUL.md Section */}
+                  <div>
+                    <div className="flex items-center justify-between mb-1">
+                      <p className="text-xs text-muted-foreground font-medium">SOUL.md</p>
+                      {editingSoulMd ? (
+                        <Button
+                          size="sm"
+                          variant="ghost"
+                          className="h-5 text-[10px] text-emerald-400 hover:bg-emerald-500/10"
+                          onClick={updateSoulMd}
+                        >
+                          <Save className="w-3 h-3 mr-0.5" /> Save
+                        </Button>
+                      ) : (
+                        <Button
+                          size="sm"
+                          variant="ghost"
+                          className="h-5 text-[10px] text-emerald-400 hover:bg-emerald-500/10"
+                          onClick={() => {
+                            setSoulMdValue(selectedAgent.soulMd || '');
+                            setEditingSoulMd(true);
+                          }}
+                        >
+                          <Pencil className="w-3 h-3 mr-0.5" /> Edit
+                        </Button>
+                      )}
+                    </div>
+                    {editingSoulMd ? (
+                      <Textarea
+                        value={soulMdValue}
+                        onChange={(e) => setSoulMdValue(e.target.value)}
+                        className="bg-secondary border-border min-h-24 text-xs font-mono"
+                        placeholder="Define the agent's personality and behavior..."
+                      />
+                    ) : (
+                      <p className="text-xs mt-1 text-foreground/80 bg-secondary p-2.5 rounded-md border border-border/50">
+                        {selectedAgent.soulMd || 'No SOUL.md configured — define the agent\'s personality and core behaviors'}
+                      </p>
+                    )}
+                  </div>
+
                   <div>
                     <p className="text-xs text-muted-foreground font-medium">System Prompt</p>
                     <p className="text-xs mt-1 text-foreground/80 bg-secondary p-2 rounded-md">
@@ -379,6 +479,81 @@ export function AgentsView() {
                       </Button>
                     </div>
                   </div>
+
+                  {/* Skills Section */}
+                  {selectedAgent.skills && selectedAgent.skills.length > 0 && (
+                    <div>
+                      <div className="flex items-center gap-1.5 mb-2">
+                        <Wrench className="w-3 h-3 text-purple-400" />
+                        <p className="text-xs text-muted-foreground font-medium">Skills</p>
+                      </div>
+                      <div className="space-y-1.5">
+                        {selectedAgent.skills.map((skill) => (
+                          <div key={skill.id} className="flex items-center gap-2 text-xs p-2 bg-secondary rounded-md">
+                            {skill.isAutoLearned ? (
+                              <Lightbulb className="w-3 h-3 text-yellow-400" />
+                            ) : (
+                              <Wrench className="w-3 h-3 text-purple-400" />
+                            )}
+                            <span className="flex-1">{skill.name}</span>
+                            <Badge variant="outline" className={`text-[9px] ${categoryColors[skill.category] || ''}`}>
+                              {skill.category}
+                            </Badge>
+                            <span className="text-[9px] text-muted-foreground">{skill.usageCount}x</span>
+                          </div>
+                        ))}
+                      </div>
+                    </div>
+                  )}
+
+                  {/* Goals Section */}
+                  {selectedAgent.goals && selectedAgent.goals.length > 0 && (
+                    <div>
+                      <div className="flex items-center gap-1.5 mb-2">
+                        <Target className="w-3 h-3 text-orange-400" />
+                        <p className="text-xs text-muted-foreground font-medium">Active Goals</p>
+                      </div>
+                      <div className="space-y-1.5">
+                        {selectedAgent.goals.map((goal) => (
+                          <div key={goal.id} className="p-2 bg-secondary rounded-md">
+                            <div className="flex items-center justify-between mb-1">
+                              <span className="text-xs">{goal.title}</span>
+                              <Badge variant="outline" className={`text-[9px] ${goalStatusColors[goal.status] || ''}`}>
+                                {goal.status}
+                              </Badge>
+                            </div>
+                            <div className="h-1 bg-secondary-foreground/10 rounded-full overflow-hidden">
+                              <div
+                                className="h-full rounded-full bg-emerald-500 transition-all"
+                                style={{ width: `${goal.progress}%` }}
+                              />
+                            </div>
+                          </div>
+                        ))}
+                      </div>
+                    </div>
+                  )}
+
+                  {/* Delegates Section */}
+                  {selectedAgent.delegates && selectedAgent.delegates.length > 0 && (
+                    <div>
+                      <div className="flex items-center gap-1.5 mb-2">
+                        <Users className="w-3 h-3 text-blue-400" />
+                        <p className="text-xs text-muted-foreground font-medium">Delegates</p>
+                      </div>
+                      <div className="space-y-1.5">
+                        {selectedAgent.delegates.map((delegate) => (
+                          <div key={delegate.id} className="flex items-center gap-2 text-xs p-2 bg-secondary rounded-md">
+                            <Users className="w-3 h-3 text-blue-400" />
+                            <span className="flex-1 truncate">{delegate.name}</span>
+                            <Badge variant="outline" className={`text-[9px] ${delegateStatusColors[delegate.status] || ''}`}>
+                              {delegate.status}
+                            </Badge>
+                          </div>
+                        ))}
+                      </div>
+                    </div>
+                  )}
 
                   {/* Assigned Tasks */}
                   {selectedAgent.tasks && selectedAgent.tasks.length > 0 && (

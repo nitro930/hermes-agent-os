@@ -16,6 +16,11 @@ import {
   AlertCircle,
   Clock,
   ArrowUp,
+  Wrench,
+  Target,
+  Mic,
+  Plug,
+  Lightbulb,
 } from 'lucide-react';
 
 interface Agent {
@@ -36,6 +41,22 @@ interface ActivityItem {
   createdAt: string;
 }
 
+interface Skill {
+  id: string;
+  name: string;
+  category: string;
+  isAutoLearned: boolean;
+  createdAt: string;
+}
+
+interface Goal {
+  id: string;
+  title: string;
+  status: string;
+  progress: number;
+  agent?: { id: string; name: string; avatar: string | null } | null;
+}
+
 interface Stats {
   totalAgents: number;
   activeAgents: number;
@@ -43,6 +64,11 @@ interface Stats {
   memoryEntries: number;
   totalTasks: number;
   runningAutomations: number;
+  totalSkills: number;
+  totalGoals: number;
+  activeGoals: number;
+  mcpConnections: number;
+  totalMcpServers: number;
   agentsByStatus: { status: string; _count: number }[];
   tasksByStatus: { status: string; _count: number }[];
 }
@@ -68,11 +94,20 @@ const activityTypeIcons: Record<string, React.ElementType> = {
   error: AlertCircle,
 };
 
+const progressColor = (progress: number) => {
+  if (progress >= 75) return 'bg-emerald-500';
+  if (progress >= 50) return 'bg-yellow-500';
+  if (progress >= 25) return 'bg-orange-500';
+  return 'bg-slate-500';
+};
+
 export function Dashboard() {
   const { setActiveView } = useAppStore();
   const [stats, setStats] = useState<Stats | null>(null);
   const [agents, setAgents] = useState<Agent[]>([]);
   const [activities, setActivities] = useState<ActivityItem[]>([]);
+  const [skills, setSkills] = useState<Skill[]>([]);
+  const [goals, setGoals] = useState<Goal[]>([]);
   const [loading, setLoading] = useState(true);
 
   useEffect(() => {
@@ -81,14 +116,18 @@ export function Dashboard() {
 
   async function loadData() {
     try {
-      const [statsRes, agentsRes, activityRes] = await Promise.all([
+      const [statsRes, agentsRes, activityRes, skillsRes, goalsRes] = await Promise.all([
         fetch('/api/stats'),
         fetch('/api/agents'),
         fetch('/api/activity'),
+        fetch('/api/skills?category=all'),
+        fetch('/api/goals'),
       ]);
       if (statsRes.ok) setStats(await statsRes.json());
       if (agentsRes.ok) setAgents(await agentsRes.json());
       if (activityRes.ok) setActivities(await activityRes.json());
+      if (skillsRes.ok) setSkills(await skillsRes.json());
+      if (goalsRes.ok) setGoals(await goalsRes.json());
     } catch (error) {
       console.error('Failed to load dashboard data:', error);
     } finally {
@@ -101,7 +140,7 @@ export function Dashboard() {
       <div className="flex items-center justify-center h-full">
         <div className="flex flex-col items-center gap-3">
           <div className="w-8 h-8 border-2 border-emerald-500 border-t-transparent rounded-full animate-spin" />
-          <span className="text-sm text-muted-foreground">Loading Agent OS...</span>
+          <span className="text-sm text-muted-foreground">Loading Hermes Agent OS...</span>
         </div>
       </div>
     );
@@ -109,10 +148,15 @@ export function Dashboard() {
 
   const statCards = [
     { label: 'Total Agents', value: stats?.totalAgents ?? 0, icon: Bot, color: 'text-emerald-400' },
-    { label: 'Active Agents', value: stats?.activeAgents ?? 0, icon: Activity, color: 'text-blue-400' },
     { label: 'Tasks Done', value: stats?.tasksCompleted ?? 0, icon: CheckCircle2, color: 'text-yellow-400' },
-    { label: 'Memory Entries', value: stats?.memoryEntries ?? 0, icon: Brain, color: 'text-purple-400' },
+    { label: 'Skills', value: stats?.totalSkills ?? 0, icon: Wrench, color: 'text-purple-400' },
+    { label: 'Goals', value: stats?.totalGoals ?? 0, icon: Target, color: 'text-orange-400' },
+    { label: 'Memory Entries', value: stats?.memoryEntries ?? 0, icon: Brain, color: 'text-blue-400' },
   ];
+
+  const activeGoals = goals.filter((g) => g.status === 'active');
+  const jarvisAgent = agents.find((a) => a.name === 'Jarvis');
+  const jarvisStatus = jarvisAgent?.status || 'idle';
 
   return (
     <div className="space-y-6">
@@ -120,7 +164,7 @@ export function Dashboard() {
       <div className="flex items-center justify-between">
         <div>
           <h1 className="text-2xl font-bold text-foreground">Dashboard</h1>
-          <p className="text-sm text-muted-foreground">Welcome to Agent OS — your AI agent command center</p>
+          <p className="text-sm text-muted-foreground">Welcome to Hermes Agent OS — your AI agent command center</p>
         </div>
         <div className="flex items-center gap-2">
           <div className="flex items-center gap-2 px-3 py-1.5 rounded-lg bg-emerald-500/10 border border-emerald-500/20">
@@ -131,7 +175,7 @@ export function Dashboard() {
       </div>
 
       {/* Stats Cards */}
-      <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
+      <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-5 gap-4">
         {statCards.map((stat) => {
           const Icon = stat.icon;
           return (
@@ -240,6 +284,94 @@ export function Dashboard() {
         </Card>
       </div>
 
+      {/* Learning Loop + Goals Progress */}
+      <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
+        {/* Learning Loop */}
+        <Card className="bg-card border-border">
+          <CardHeader className="pb-2">
+            <div className="flex items-center justify-between">
+              <CardTitle className="text-sm font-semibold">Learning Loop</CardTitle>
+              <Button
+                variant="ghost"
+                size="sm"
+                className="text-xs text-emerald-400 hover:text-emerald-300"
+                onClick={() => setActiveView('skills')}
+              >
+                View All Skills
+              </Button>
+            </div>
+          </CardHeader>
+          <CardContent className="p-4 pt-0">
+            <ScrollArea className="h-48">
+              <div className="space-y-2.5">
+                {skills.filter((s) => s.isAutoLearned).map((skill) => (
+                  <div key={skill.id} className="flex items-center gap-2.5 p-2.5 rounded-lg bg-secondary/50 border border-border">
+                    <Lightbulb className="w-4 h-4 text-yellow-400 shrink-0" />
+                    <div className="flex-1 min-w-0">
+                      <p className="text-xs font-medium truncate">{skill.name}</p>
+                      <p className="text-[10px] text-muted-foreground">
+                        Auto-learned · {skill.category}
+                      </p>
+                    </div>
+                    <Badge variant="outline" className="text-[9px] bg-yellow-500/20 text-yellow-400 border-yellow-500/30 shrink-0">
+                      Auto
+                    </Badge>
+                  </div>
+                ))}
+                {skills.filter((s) => s.isAutoLearned).length === 0 && (
+                  <p className="text-xs text-muted-foreground text-center py-4">No auto-learned skills yet</p>
+                )}
+              </div>
+            </ScrollArea>
+          </CardContent>
+        </Card>
+
+        {/* Goals Progress */}
+        <Card className="bg-card border-border">
+          <CardHeader className="pb-2">
+            <div className="flex items-center justify-between">
+              <CardTitle className="text-sm font-semibold">Goals Progress</CardTitle>
+              <Button
+                variant="ghost"
+                size="sm"
+                className="text-xs text-emerald-400 hover:text-emerald-300"
+                onClick={() => setActiveView('goals')}
+              >
+                View All Goals
+              </Button>
+            </div>
+          </CardHeader>
+          <CardContent className="p-4 pt-0">
+            <ScrollArea className="h-48">
+              <div className="space-y-3">
+                {activeGoals.map((goal) => (
+                  <div key={goal.id} className="space-y-1.5">
+                    <div className="flex items-center justify-between">
+                      <p className="text-xs font-medium truncate">{goal.title}</p>
+                      <span className="text-[10px] text-muted-foreground shrink-0 ml-2">{goal.progress}%</span>
+                    </div>
+                    <div className="h-1.5 bg-secondary rounded-full overflow-hidden">
+                      <div
+                        className={`h-full rounded-full transition-all duration-300 ${progressColor(goal.progress)}`}
+                        style={{ width: `${goal.progress}%` }}
+                      />
+                    </div>
+                    {goal.agent && (
+                      <p className="text-[10px] text-muted-foreground">
+                        {goal.agent.avatar || '🤖'} {goal.agent.name}
+                      </p>
+                    )}
+                  </div>
+                ))}
+                {activeGoals.length === 0 && (
+                  <p className="text-xs text-muted-foreground text-center py-4">No active goals</p>
+                )}
+              </div>
+            </ScrollArea>
+          </CardContent>
+        </Card>
+      </div>
+
       {/* Quick Actions */}
       <Card className="bg-card border-border">
         <CardHeader className="pb-2">
@@ -263,12 +395,28 @@ export function Dashboard() {
               New Task
             </Button>
             <Button
-              onClick={() => setActiveView('memory')}
+              onClick={() => setActiveView('skills')}
               variant="outline"
               className="border-purple-500/30 text-purple-400 hover:bg-purple-500/10"
             >
               <Plus className="w-4 h-4 mr-1.5" />
-              New Memory
+              New Skill
+            </Button>
+            <Button
+              onClick={() => setActiveView('goals')}
+              variant="outline"
+              className="border-orange-500/30 text-orange-400 hover:bg-orange-500/10"
+            >
+              <Target className="w-4 h-4 mr-1.5" />
+              New Goal
+            </Button>
+            <Button
+              onClick={() => setActiveView('voice')}
+              variant="outline"
+              className="border-pink-500/30 text-pink-400 hover:bg-pink-500/10"
+            >
+              <Mic className="w-4 h-4 mr-1.5" />
+              Voice Control
             </Button>
             <Button
               onClick={() => setActiveView('chat')}
@@ -288,7 +436,7 @@ export function Dashboard() {
           <CardTitle className="text-sm font-semibold">System Health</CardTitle>
         </CardHeader>
         <CardContent className="p-4 pt-0">
-          <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
+          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
             <div className="flex items-center gap-3">
               <div className="w-2 h-2 rounded-full bg-emerald-500" />
               <div>
@@ -308,6 +456,13 @@ export function Dashboard() {
               <div>
                 <p className="text-xs text-muted-foreground">Automations</p>
                 <p className="text-sm font-medium text-yellow-400">{stats?.runningAutomations ?? 0} Active</p>
+              </div>
+            </div>
+            <div className="flex items-center gap-3">
+              <Plug className="w-4 h-4 text-blue-400" />
+              <div>
+                <p className="text-xs text-muted-foreground">MCP Connections</p>
+                <p className="text-sm font-medium text-blue-400">{stats?.mcpConnections ?? 0} / {stats?.totalMcpServers ?? 0}</p>
               </div>
             </div>
           </div>

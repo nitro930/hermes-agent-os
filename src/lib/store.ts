@@ -1,6 +1,6 @@
 import { create } from 'zustand';
 
-export type ActiveView = 'dashboard' | 'agents' | 'chat' | 'memory' | 'tasks' | 'automations' | 'teams';
+export type ActiveView = 'dashboard' | 'agents' | 'chat' | 'memory' | 'tasks' | 'automations' | 'teams' | 'skills' | 'goals' | 'voice' | 'mcp';
 
 interface AppState {
   activeView: ActiveView;

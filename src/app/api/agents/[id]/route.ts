@@ -9,7 +9,15 @@ export async function GET(
     const { id } = await params;
     const agent = await db.agent.findUnique({
       where: { id },
-      include: { team: true, tasks: true, memories: true, conversations: true },
+      include: {
+        team: true,
+        tasks: true,
+        memories: true,
+        conversations: true,
+        skills: true,
+        goals: true,
+        delegates: true,
+      },
     });
     if (!agent) {
       return NextResponse.json({ error: 'Agent not found' }, { status: 404 });
@@ -42,6 +50,18 @@ export async function PATCH(
           action: 'Status Changed',
           details: `Agent "${agent.name}" status changed to ${agent.status}`,
           type: agent.status === 'running' ? 'success' : agent.status === 'error' ? 'error' : 'info',
+        },
+      });
+    }
+
+    if (body.soulMd !== undefined) {
+      await db.activityLog.create({
+        data: {
+          agentId: agent.id,
+          agentName: agent.name,
+          action: 'SOUL.md Updated',
+          details: `Agent "${agent.name}" personality configuration was updated`,
+          type: 'info',
         },
       });
     }

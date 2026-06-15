@@ -15,12 +15,16 @@ model Agent {
   status      String   @default("idle") // idle, running, error, paused
   avatar      String?
   systemPrompt String?
+  soulMd      String?  // SOUL.md personality configuration
   model       String   @default("default")
   teamId      String?
   team        Team?    @relation(fields: [teamId], references: [id])
   tasks       Task[]
   memories    Memory[]
   conversations Conversation[]
+  skills      Skill[]
+  goals       Goal[]
+  delegates   Delegate[]
   createdAt   DateTime @default(now())
   updatedAt   DateTime @updatedAt
 }
@@ -105,4 +109,57 @@ model ActivityLog {
   details   String?
   type      String   @default("info") // info, success, warning, error
   createdAt DateTime @default(now())
+}
+
+model Skill {
+  id          String   @id @default(cuid())
+  name        String
+  description String
+  category    String   @default("general") // general, research, coding, writing, automation, communication
+  steps       String   // JSON array of steps
+  triggers    String?  // when to use this skill
+  isAutoLearned Boolean @default(false) // was this skill auto-created by an agent?
+  usageCount  Int      @default(0)
+  agentId     String?
+  agent       Agent?   @relation(fields: [agentId], references: [id])
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+}
+
+model Goal {
+  id          String   @id @default(cuid())
+  title       String
+  description String?
+  status      String   @default("active") // active, completed, abandoned
+  priority    String   @default("medium") // low, medium, high, urgent
+  progress    Int      @default(0) // 0-100 percentage
+  agentId     String?
+  agent       Agent?   @relation(fields: [agentId], references: [id])
+  dueDate     String?
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+}
+
+model Delegate {
+  id          String   @id @default(cuid())
+  name        String
+  description String?
+  status      String   @default("pending") // pending, running, completed, failed
+  task        String   // what the delegate should do
+  result      String?  // result when completed
+  parentAgentId String
+  parentAgent Agent   @relation(fields: [parentAgentId], references: [id])
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+}
+
+model McpServer {
+  id          String   @id @default(cuid())
+  name        String
+  description String?
+  url         String
+  status      String   @default("disconnected") // connected, disconnected, error
+  toolsCount  Int      @default(0)
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
 }
