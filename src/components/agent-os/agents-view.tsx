@@ -39,6 +39,8 @@ import {
   Pencil,
   Save,
   Users,
+  Loader2,
+  Zap,
 } from 'lucide-react';
 import { useToast } from '@/hooks/use-toast';
 
@@ -115,6 +117,8 @@ export function AgentsView() {
   const [createOpen, setCreateOpen] = useState(false);
   const [editingSoulMd, setEditingSoulMd] = useState(false);
   const [soulMdValue, setSoulMdValue] = useState('');
+  const [isRunning, setIsRunning] = useState(false);
+  const [runResult, setRunResult] = useState<{ executionPlan: string; taskResult: Record<string, unknown> | null } | null>(null);
   const [newAgent, setNewAgent] = useState({
     name: '',
     description: '',
@@ -206,6 +210,28 @@ export function AgentsView() {
       }
     } catch {
       toast({ title: 'Failed to delete agent', variant: 'destructive' });
+    }
+  }
+
+  async function runAgent(id: string) {
+    setIsRunning(true);
+    setRunResult(null);
+    try {
+      const res = await fetch(`/api/agents/${id}/run`, { method: 'POST' });
+      if (res.ok) {
+        const data = await res.json();
+        setRunResult({ executionPlan: data.executionPlan, taskResult: data.taskResult });
+        toast({ title: `${data.agentName} is now running`, description: `${data.pendingTasks} pending tasks` });
+        loadAgents();
+        const detail = await (await fetch(`/api/agents/${id}`)).json();
+        setSelectedAgent(detail);
+      } else {
+        toast({ title: 'Failed to run agent', variant: 'destructive' });
+      }
+    } catch {
+      toast({ title: 'Failed to run agent', variant: 'destructive' });
+    } finally {
+      setIsRunning(false);
     }
   }
 
@@ -444,7 +470,17 @@ export function AgentsView() {
                   {/* Status Controls */}
                   <div>
                     <p className="text-xs text-muted-foreground font-medium mb-2">Status Controls</p>
-                    <div className="flex gap-2">
+                    <div className="flex gap-2 flex-wrap">
+                      <Button
+                        size="sm"
+                        variant="outline"
+                        className="text-emerald-400 border-emerald-500/30 hover:bg-emerald-500/10"
+                        onClick={() => runAgent(selectedAgent.id)}
+                        disabled={isRunning}
+                      >
+                        {isRunning ? <Loader2 className="w-3 h-3 mr-1 animate-spin" /> : <Zap className="w-3 h-3 mr-1" />}
+                        Run Agent
+                      </Button>
                       <Button
                         size="sm"
                         variant="outline"
@@ -479,6 +515,22 @@ export function AgentsView() {
                       </Button>
                     </div>
                   </div>
+
+                  {/* Execution Result */}
+                  {runResult && (
+                    <div>
+                      <p className="text-xs text-muted-foreground font-medium mb-1">Execution Plan</p>
+                      <div className="bg-emerald-500/5 border border-emerald-500/20 rounded-md p-3 space-y-2">
+                        <p className="text-xs text-foreground/80 whitespace-pre-wrap">{runResult.executionPlan}</p>
+                        {runResult.taskResult && (
+                          <div className="border-t border-emerald-500/10 pt-2 mt-2">
+                            <p className="text-[10px] text-emerald-400 font-medium">Task Processed: {String(runResult.taskResult.taskTitle)}</p>
+                            <p className="text-[10px] text-muted-foreground mt-1 line-clamp-3">{String(runResult.taskResult.output)}</p>
+                          </div>
+                        )}
+                      </div>
+                    </div>
+                  )}
 
                   {/* Skills Section */}
                   {selectedAgent.skills && selectedAgent.skills.length > 0 && (

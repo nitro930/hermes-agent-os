@@ -13,8 +13,9 @@ import {
   SelectTrigger,
   SelectValue,
 } from '@/components/ui/select';
-import { Send, Plus, MessageSquare, Bot, User, Trash2 } from 'lucide-react';
+import { Send, Plus, MessageSquare, Bot, User, Trash2, Mic, Volume2 } from 'lucide-react';
 import { useToast } from '@/hooks/use-toast';
+import ReactMarkdown from 'react-markdown';
 
 interface Agent {
   id: string;
@@ -22,6 +23,7 @@ interface Agent {
   type: string;
   avatar: string | null;
   status: string;
+  systemPrompt?: string;
 }
 
 interface Conversation {
@@ -50,7 +52,11 @@ export function ChatView() {
   const [selectedAgentId, setSelectedAgentId] = useState<string>('');
   const [isLoading, setIsLoading] = useState(false);
   const [loading, setLoading] = useState(true);
+  const [isListening, setIsListening] = useState(false);
+  const [isSpeaking, setIsSpeaking] = useState(false);
   const messagesEndRef = useRef<HTMLDivElement>(null);
+  const mediaRecorderRef = useRef<MediaRecorder | null>(null);
+  const audioChunksRef = useRef<Blob[]>([]);
 
   const loadAgents = useCallback(async () => {
     try {
@@ -104,6 +110,123 @@ export function ChatView() {
   useEffect(() => {
     messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' });
   }, [messages]);
+
+  // Voice input using Web Speech API (browser-based) with fallback to server ASR
+  async function toggleVoiceInput() {
+    if (isListening) {
+      // Stop listening
+      if (mediaRecorderRef.current && mediaRecorderRef.current.state === 'recording') {
+        mediaRecorderRef.current.stop();
+      }
+      setIsListening(false);
+      return;
+    }
+
+    // Try browser SpeechRecognition first
+    const SpeechRecognition = (window as unknown as { SpeechRecognition?: typeof window.SpeechRecognition; webkitSpeechRecognition?: typeof window.SpeechRecognition }).SpeechRecognition || (window as unknown as { webkitSpeechRecognition?: typeof window.SpeechRecognition }).webkitSpeechRecognition;
+    
+    if (SpeechRecognition) {
+      const recognition = new SpeechRecognition();
+      recognition.continuous = false;
+      recognition.interimResults = false;
+      recognition.lang = 'en-US';
+
+      recognition.onstart = () => setIsListening(true);
+      recognition.onend = () => setIsListening(false);
+      recognition.onerror = () => setIsListening(false);
+      
+      recognition.onresult = (event: SpeechRecognitionEvent) => {
+        const transcript = event.results[0][0].transcript;
+        setInput(prev => prev ? prev + ' ' + transcript : transcript);
+      };
+
+      recognition.start();
+      return;
+    }
+
+    // Fallback: Use MediaRecorder + server ASR
+    try {
+      const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
+      const mediaRecorder = new MediaRecorder(stream, { mimeType: 'audio/webm' });
+      mediaRecorderRef.current = mediaRecorder;
+      audioChunksRef.current = [];
+      setIsListening(true);
+
+      mediaRecorder.ondataavailable = (event) => {
+        audioChunksRef.current.push(event.data);
+      };
+
+      mediaRecorder.onstop = async () => {
+        stream.getTracks().forEach(t => t.stop());
+        setIsListening(false);
+        const audioBlob = new Blob(audioChunksRef.current, { type: 'audio/webm' });
+        
+        // Send to ASR endpoint
+        const formData = new FormData();
+        formData.append('audio', audioBlob, 'recording.webm');
+        
+        try {
+          const res = await fetch('/api/voice/asr', { method: 'POST', body: formData });
+          if (res.ok) {
+            const data = await res.json();
+            if (data.text) {
+              setInput(prev => prev ? prev + ' ' + data.text : data.text);
+            }
+          }
+        } catch {
+          toast({ title: 'Voice recognition failed', variant: 'destructive' });
+        }
+      };
+
+      mediaRecorder.start();
+      setTimeout(() => {
+        if (mediaRecorder.state === 'recording') {
+          mediaRecorder.stop();
+        }
+      }, 10000); // Auto-stop after 10s
+    } catch {
+      toast({ title: 'Microphone access denied', variant: 'destructive' });
+    }
+  }
+
+  // Text-to-speech for assistant messages
+  async function speakText(text: string) {
+    if (isSpeaking) return;
+    
+    // Try browser TTS first
+    if ('speechSynthesis' in window) {
+      setIsSpeaking(true);
+      const utterance = new SpeechSynthesisUtterance(text);
+      utterance.onend = () => setIsSpeaking(false);
+      utterance.onerror = () => setIsSpeaking(false);
+      utterance.rate = 1.0;
+      speechSynthesis.speak(utterance);
+      return;
+    }
+
+    // Fallback: Use server TTS
+    try {
+      setIsSpeaking(true);
+      const res = await fetch('/api/voice/tts', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ text }),
+      });
+      if (res.ok) {
+        const data = await res.json();
+        if (data.audio) {
+          const audio = new Audio(`data:audio/mp3;base64,${data.audio}`);
+          audio.onended = () => setIsSpeaking(false);
+          audio.onerror = () => setIsSpeaking(false);
+          audio.play();
+        } else {
+          setIsSpeaking(false);
+        }
+      }
+    } catch {
+      setIsSpeaking(false);
+    }
+  }
 
   async function sendMessage() {
     if (!input.trim() || !selectedAgentId || isLoading) return;
@@ -273,7 +396,7 @@ export function ChatView() {
               <div className="flex flex-col items-center justify-center py-16 text-muted-foreground">
                 <Bot className="w-12 h-12 mb-3 text-emerald-500/40" />
                 <p className="text-sm">Start a conversation with {selectedAgent?.name || 'an agent'}</p>
-                <p className="text-xs mt-1">Type a message below to begin</p>
+                <p className="text-xs mt-1">Type a message below or click the mic to speak</p>
               </div>
             )}
             {messages.map((msg) => (
@@ -293,10 +416,28 @@ export function ChatView() {
                       : 'bg-secondary text-foreground'
                   }`}
                 >
-                  <p className="text-sm whitespace-pre-wrap">{msg.content}</p>
-                  <p className={`text-[10px] mt-1 ${msg.role === 'user' ? 'text-emerald-200' : 'text-muted-foreground'}`}>
-                    {new Date(msg.createdAt).toLocaleTimeString()}
-                  </p>
+                  {msg.role === 'user' ? (
+                    <p className="text-sm whitespace-pre-wrap">{msg.content}</p>
+                  ) : (
+                    <div className="prose prose-invert prose-sm max-w-none text-sm [&>p]:mb-2 [&>ul]:mb-2 [&>ol]:mb-2 [&>pre]:bg-background/50 [&>pre]:rounded-md [&>pre]:p-3 [&>code]:text-emerald-400 [&>h1]:text-base [&>h2]:text-sm [&>h3]:text-sm [&_a]:text-emerald-400 [&_a:hover]:underline">
+                      <ReactMarkdown>{msg.content}</ReactMarkdown>
+                    </div>
+                  )}
+                  <div className="flex items-center justify-between mt-1.5">
+                    <p className={`text-[10px] ${msg.role === 'user' ? 'text-emerald-200' : 'text-muted-foreground'}`}>
+                      {new Date(msg.createdAt).toLocaleTimeString()}
+                    </p>
+                    {msg.role === 'assistant' && (
+                      <button
+                        onClick={() => speakText(msg.content)}
+                        className="text-[10px] text-muted-foreground hover:text-emerald-400 transition-colors flex items-center gap-1 ml-2"
+                        title="Read aloud"
+                      >
+                        <Volume2 className="w-3 h-3" />
+                        {isSpeaking ? 'Speaking...' : 'Read'}
+                      </button>
+                    )}
+                  </div>
                 </div>
                 {msg.role === 'user' && (
                   <div className="flex items-center justify-center w-7 h-7 rounded-full bg-blue-500/20 text-blue-400 shrink-0 mt-0.5">
@@ -326,11 +467,20 @@ export function ChatView() {
         {/* Input */}
         <div className="p-3 border-t border-border">
           <div className="flex gap-2">
+            <Button
+              variant="ghost"
+              size="icon"
+              className={`shrink-0 ${isListening ? 'text-red-400 bg-red-500/10' : 'text-muted-foreground hover:text-emerald-400'}`}
+              onClick={toggleVoiceInput}
+              title={isListening ? 'Stop listening' : 'Voice input'}
+            >
+              <Mic className="w-4 h-4" />
+            </Button>
             <Input
               value={input}
               onChange={(e) => setInput(e.target.value)}
               onKeyDown={(e) => e.key === 'Enter' && !e.shiftKey && sendMessage()}
-              placeholder={`Message ${selectedAgent?.name || 'agent'}...`}
+              placeholder={isListening ? 'Listening...' : `Message ${selectedAgent?.name || 'agent'}...`}
               className="bg-secondary border-border flex-1"
               disabled={isLoading || !selectedAgentId}
             />

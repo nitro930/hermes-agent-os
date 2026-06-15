@@ -14,6 +14,7 @@ import { SkillsView } from '@/components/agent-os/skills-view';
 import { GoalsView } from '@/components/agent-os/goals-view';
 import { VoiceView } from '@/components/agent-os/voice-view';
 import { McpView } from '@/components/agent-os/mcp-view';
+import { ErrorBoundary } from '@/components/agent-os/error-boundary';
 
 function ViewRenderer() {
   const { activeView } = useAppStore();
@@ -90,7 +91,9 @@ export default function Home() {
     <div className="flex h-screen bg-background overflow-hidden">
       <Sidebar />
       <main className="flex-1 overflow-y-auto p-6">
-        <ViewRenderer />
+        <ErrorBoundary>
+          <ViewRenderer />
+        </ErrorBoundary>
       </main>
     </div>
   );

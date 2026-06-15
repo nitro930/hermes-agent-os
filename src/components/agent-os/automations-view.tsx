@@ -34,6 +34,8 @@ import {
   Bot,
   Bell,
   Play,
+  Loader2,
+  CheckCircle2,
 } from 'lucide-react';
 import { useToast } from '@/hooks/use-toast';
 
@@ -82,6 +84,8 @@ export function AutomationsView() {
   const [automations, setAutomations] = useState<Automation[]>([]);
   const [loading, setLoading] = useState(true);
   const [createOpen, setCreateOpen] = useState(false);
+  const [executingId, setExecutingId] = useState<string | null>(null);
+  const [lastResult, setLastResult] = useState<{ id: string; result: Record<string, unknown> } | null>(null);
   const [newAutomation, setNewAutomation] = useState({
     name: '',
     description: '',
@@ -147,6 +151,27 @@ export function AutomationsView() {
       }
     } catch {
       toast({ title: 'Failed to delete automation', variant: 'destructive' });
+    }
+  }
+
+  async function executeAutomation(id: string) {
+    setExecutingId(id);
+    setLastResult(null);
+    try {
+      const res = await fetch(`/api/automations/${id}/execute`, { method: 'POST' });
+      if (res.ok) {
+        const data = await res.json();
+        setLastResult({ id, result: data.result || {} });
+        toast({ title: 'Automation executed successfully', description: data.automationName });
+        loadAutomations();
+      } else {
+        const data = await res.json();
+        toast({ title: 'Automation execution failed', description: data.error, variant: 'destructive' });
+      }
+    } catch {
+      toast({ title: 'Failed to execute automation', variant: 'destructive' });
+    } finally {
+      setExecutingId(null);
     }
   }
 
@@ -296,19 +321,45 @@ export function AutomationsView() {
                   >
                     {automation.isActive ? 'Active' : 'Inactive'}
                   </Badge>
-                  <Button
-                    variant="ghost"
-                    size="icon"
-                    className="w-7 h-7 text-red-400"
-                    onClick={() => deleteAutomation(automation.id)}
-                  >
-                    <Trash2 className="w-3.5 h-3.5" />
-                  </Button>
+                  <div className="flex items-center gap-1">
+                    <Button
+                      variant="ghost"
+                      size="icon"
+                      className="w-7 h-7 text-emerald-400"
+                      onClick={() => executeAutomation(automation.id)}
+                      disabled={executingId === automation.id || !automation.isActive}
+                      title="Run Now"
+                    >
+                      {executingId === automation.id ? (
+                        <Loader2 className="w-3.5 h-3.5 animate-spin" />
+                      ) : lastResult?.id === automation.id ? (
+                        <CheckCircle2 className="w-3.5 h-3.5" />
+                      ) : (
+                        <Play className="w-3.5 h-3.5" />
+                      )}
+                    </Button>
+                    <Button
+                      variant="ghost"
+                      size="icon"
+                      className="w-7 h-7 text-red-400"
+                      onClick={() => deleteAutomation(automation.id)}
+                    >
+                      <Trash2 className="w-3.5 h-3.5" />
+                    </Button>
+                  </div>
                 </div>
                 {automation.lastRunAt && (
                   <p className="text-[10px] text-muted-foreground mt-2">
                     Last run: {new Date(automation.lastRunAt).toLocaleString()}
                   </p>
+                )}
+                {lastResult?.id === automation.id && (
+                  <div className="mt-2 p-2 rounded bg-emerald-500/10 border border-emerald-500/20">
+                    <p className="text-[10px] text-emerald-400 font-medium">Execution Result:</p>
+                    <p className="text-[10px] text-muted-foreground mt-0.5 truncate">
+                      {JSON.stringify(lastResult.result).slice(0, 100)}
+                    </p>
+                  </div>
                 )}
               </CardContent>
             </Card>

@@ -16,10 +16,14 @@ import {
   Target,
   Mic,
   Plug,
+  Sun,
+  Moon,
 } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Separator } from '@/components/ui/separator';
 import { cn } from '@/lib/utils';
+import { useTheme } from 'next-themes';
+import { useEffect, useState } from 'react';
 
 const navItems: { view: ActiveView; label: string; icon: React.ElementType }[] = [
   { view: 'dashboard', label: 'Dashboard', icon: LayoutDashboard },
@@ -37,6 +41,12 @@ const navItems: { view: ActiveView; label: string; icon: React.ElementType }[] =
 
 export function Sidebar() {
   const { activeView, setActiveView, sidebarOpen, setSidebarOpen } = useAppStore();
+  const { theme, setTheme } = useTheme();
+  const [mounted, setMounted] = useState(false);
+
+  useEffect(() => {
+    setMounted(true);
+  }, []);
 
   return (
     <div
@@ -83,15 +93,26 @@ export function Sidebar() {
 
       <Separator className="bg-sidebar-border" />
 
-      {/* System status */}
-      {sidebarOpen && (
-        <div className="px-4 py-3">
+      {/* Theme toggle + System status */}
+      <div className="px-4 py-3 flex items-center justify-between">
+        {mounted && (
+          <Button
+            variant="ghost"
+            size="icon"
+            className="w-8 h-8 text-muted-foreground hover:text-foreground"
+            onClick={() => setTheme(theme === 'dark' ? 'light' : 'dark')}
+            title={theme === 'dark' ? 'Switch to light mode' : 'Switch to dark mode'}
+          >
+            {theme === 'dark' ? <Sun className="w-4 h-4" /> : <Moon className="w-4 h-4" />}
+          </Button>
+        )}
+        {sidebarOpen && (
           <div className="flex items-center gap-2">
             <div className="w-2 h-2 rounded-full bg-emerald-500 pulse-emerald" />
             <span className="text-xs text-muted-foreground">System Online</span>
           </div>
-        </div>
-      )}
+        )}
+      </div>
 
       {/* Collapse toggle */}
       <button

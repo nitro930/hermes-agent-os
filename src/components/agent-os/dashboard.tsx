@@ -21,7 +21,11 @@ import {
   Mic,
   Plug,
   Lightbulb,
+  RefreshCw,
 } from 'lucide-react';
+import {
+  PieChart, Pie, Cell, BarChart, Bar, XAxis, YAxis, Tooltip, ResponsiveContainer, AreaChart, Area,
+} from 'recharts';
 
 interface Agent {
   id: string;
@@ -101,6 +105,23 @@ const progressColor = (progress: number) => {
   return 'bg-slate-500';
 };
 
+const CHART_COLORS = ['#10b981', '#6366f1', '#f59e0b', '#ec4899', '#8b5cf6', '#06b6d4'];
+
+// Custom tooltip for charts
+function CustomTooltip({ active, payload, label }: { active?: boolean; payload?: Array<{ name: string; value: number; color: string }>; label?: string }) {
+  if (!active || !payload?.length) return null;
+  return (
+    <div className="bg-card border border-border rounded-lg px-3 py-2 shadow-lg">
+      {label && <p className="text-xs text-muted-foreground mb-1">{label}</p>}
+      {payload.map((p, i) => (
+        <p key={i} className="text-xs font-medium" style={{ color: p.color }}>
+          {p.name}: {p.value}
+        </p>
+      ))}
+    </div>
+  );
+}
+
 export function Dashboard() {
   const { setActiveView } = useAppStore();
   const [stats, setStats] = useState<Stats | null>(null);
@@ -155,8 +176,31 @@ export function Dashboard() {
   ];
 
   const activeGoals = goals.filter((g) => g.status === 'active');
-  const jarvisAgent = agents.find((a) => a.name === 'Jarvis');
-  const jarvisStatus = jarvisAgent?.status || 'idle';
+
+  // Prepare chart data
+  const agentStatusData = (stats?.agentsByStatus || []).map((s) => ({
+    name: s.status.charAt(0).toUpperCase() + s.status.slice(1),
+    value: s._count,
+  }));
+  // Ensure we have all statuses for the chart
+  if (!agentStatusData.find(d => d.name === 'Idle')) agentStatusData.push({ name: 'Idle', value: 0 });
+  if (!agentStatusData.find(d => d.name === 'Running')) agentStatusData.push({ name: 'Running', value: 0 });
+
+  const taskStatusData = (stats?.tasksByStatus || []).map((s) => ({
+    name: s.status.replace('-', ' ').replace(/\b\w/g, l => l.toUpperCase()),
+    count: s._count,
+  }));
+
+  const goalsChartData = activeGoals.slice(0, 6).map((g) => ({
+    name: g.title.length > 20 ? g.title.slice(0, 20) + '...' : g.title,
+    progress: g.progress,
+  }));
+
+  // Activity timeline data (last 7 time buckets)
+  const activityTimeline = activities.slice(0, 7).map((a, i) => ({
+    time: new Date(a.createdAt).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }),
+    events: 7 - i,
+  })).reverse();
 
   return (
     <div className="space-y-6">
@@ -167,6 +211,9 @@ export function Dashboard() {
           <p className="text-sm text-muted-foreground">Welcome to Hermes Agent OS — your AI agent command center</p>
         </div>
         <div className="flex items-center gap-2">
+          <Button variant="ghost" size="sm" onClick={loadData} className="text-muted-foreground hover:text-foreground">
+            <RefreshCw className="w-3.5 h-3.5 mr-1" /> Refresh
+          </Button>
           <div className="flex items-center gap-2 px-3 py-1.5 rounded-lg bg-emerald-500/10 border border-emerald-500/20">
             <div className="w-2 h-2 rounded-full bg-emerald-500 pulse-emerald" />
             <span className="text-xs font-medium text-emerald-400">All Systems Operational</span>
@@ -194,6 +241,88 @@ export function Dashboard() {
             </Card>
           );
         })}
+      </div>
+
+      {/* Charts Row */}
+      <div className="grid grid-cols-1 lg:grid-cols-3 gap-4">
+        {/* Agent Status Pie Chart */}
+        <Card className="bg-card border-border">
+          <CardHeader className="pb-2">
+            <CardTitle className="text-sm font-semibold">Agent Distribution</CardTitle>
+          </CardHeader>
+          <CardContent className="p-4 pt-0">
+            <ResponsiveContainer width="100%" height={180}>
+              <PieChart>
+                <Pie
+                  data={agentStatusData.filter(d => d.value > 0)}
+                  cx="50%"
+                  cy="50%"
+                  innerRadius={45}
+                  outerRadius={70}
+                  paddingAngle={4}
+                  dataKey="value"
+                >
+                  {agentStatusData.map((_, index) => (
+                    <Cell key={`cell-${index}`} fill={CHART_COLORS[index % CHART_COLORS.length]} />
+                  ))}
+                </Pie>
+                <Tooltip content={<CustomTooltip />} />
+              </PieChart>
+            </ResponsiveContainer>
+            <div className="flex flex-wrap justify-center gap-3 mt-2">
+              {agentStatusData.filter(d => d.value > 0).map((entry, i) => (
+                <div key={entry.name} className="flex items-center gap-1.5">
+                  <div className="w-2 h-2 rounded-full" style={{ backgroundColor: CHART_COLORS[i % CHART_COLORS.length] }} />
+                  <span className="text-[10px] text-muted-foreground">{entry.name} ({entry.value})</span>
+                </div>
+              ))}
+            </div>
+          </CardContent>
+        </Card>
+
+        {/* Tasks by Status Bar Chart */}
+        <Card className="bg-card border-border">
+          <CardHeader className="pb-2">
+            <CardTitle className="text-sm font-semibold">Tasks Overview</CardTitle>
+          </CardHeader>
+          <CardContent className="p-4 pt-0">
+            <ResponsiveContainer width="100%" height={200}>
+              <BarChart data={taskStatusData} barSize={32}>
+                <XAxis dataKey="name" tick={{ fontSize: 10, fill: '#64748b' }} axisLine={false} tickLine={false} />
+                <YAxis tick={{ fontSize: 10, fill: '#64748b' }} axisLine={false} tickLine={false} allowDecimals={false} />
+                <Tooltip content={<CustomTooltip />} />
+                <Bar dataKey="count" name="Tasks" radius={[4, 4, 0, 0]}>
+                  {taskStatusData.map((_, index) => (
+                    <Cell key={`bar-${index}`} fill={CHART_COLORS[index % CHART_COLORS.length]} />
+                  ))}
+                </Bar>
+              </BarChart>
+            </ResponsiveContainer>
+          </CardContent>
+        </Card>
+
+        {/* Activity Timeline Area Chart */}
+        <Card className="bg-card border-border">
+          <CardHeader className="pb-2">
+            <CardTitle className="text-sm font-semibold">Activity Timeline</CardTitle>
+          </CardHeader>
+          <CardContent className="p-4 pt-0">
+            <ResponsiveContainer width="100%" height={200}>
+              <AreaChart data={activityTimeline}>
+                <defs>
+                  <linearGradient id="activityGradient" x1="0" y1="0" x2="0" y2="1">
+                    <stop offset="5%" stopColor="#10b981" stopOpacity={0.3} />
+                    <stop offset="95%" stopColor="#10b981" stopOpacity={0} />
+                  </linearGradient>
+                </defs>
+                <XAxis dataKey="time" tick={{ fontSize: 10, fill: '#64748b' }} axisLine={false} tickLine={false} />
+                <YAxis tick={{ fontSize: 10, fill: '#64748b' }} axisLine={false} tickLine={false} allowDecimals={false} />
+                <Tooltip content={<CustomTooltip />} />
+                <Area type="monotone" dataKey="events" name="Events" stroke="#10b981" fill="url(#activityGradient)" strokeWidth={2} />
+              </AreaChart>
+            </ResponsiveContainer>
+          </CardContent>
+        </Card>
       </div>
 
       {/* Agent Status Grid + Activity Feed */}
@@ -284,7 +413,7 @@ export function Dashboard() {
         </Card>
       </div>
 
-      {/* Learning Loop + Goals Progress */}
+      {/* Learning Loop + Goals Progress Chart */}
       <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
         {/* Learning Loop */}
         <Card className="bg-card border-border">
@@ -326,7 +455,7 @@ export function Dashboard() {
           </CardContent>
         </Card>
 
-        {/* Goals Progress */}
+        {/* Goals Progress Chart */}
         <Card className="bg-card border-border">
           <CardHeader className="pb-2">
             <div className="flex items-center justify-between">
@@ -342,32 +471,26 @@ export function Dashboard() {
             </div>
           </CardHeader>
           <CardContent className="p-4 pt-0">
-            <ScrollArea className="h-48">
-              <div className="space-y-3">
-                {activeGoals.map((goal) => (
-                  <div key={goal.id} className="space-y-1.5">
-                    <div className="flex items-center justify-between">
-                      <p className="text-xs font-medium truncate">{goal.title}</p>
-                      <span className="text-[10px] text-muted-foreground shrink-0 ml-2">{goal.progress}%</span>
-                    </div>
-                    <div className="h-1.5 bg-secondary rounded-full overflow-hidden">
-                      <div
-                        className={`h-full rounded-full transition-all duration-300 ${progressColor(goal.progress)}`}
-                        style={{ width: `${goal.progress}%` }}
-                      />
-                    </div>
-                    {goal.agent && (
-                      <p className="text-[10px] text-muted-foreground">
-                        {goal.agent.avatar || '🤖'} {goal.agent.name}
-                      </p>
-                    )}
-                  </div>
-                ))}
-                {activeGoals.length === 0 && (
-                  <p className="text-xs text-muted-foreground text-center py-4">No active goals</p>
-                )}
+            {goalsChartData.length > 0 ? (
+              <ResponsiveContainer width="100%" height={180}>
+                <BarChart data={goalsChartData} layout="vertical" barSize={14}>
+                  <defs>
+                    <linearGradient id="goalGradient" x1="0" y1="0" x2="1" y2="0">
+                      <stop offset="0%" stopColor="#10b981" stopOpacity={0.8} />
+                      <stop offset="100%" stopColor="#10b981" stopOpacity={0.4} />
+                    </linearGradient>
+                  </defs>
+                  <XAxis type="number" domain={[0, 100]} tick={{ fontSize: 10, fill: '#64748b' }} axisLine={false} tickLine={false} />
+                  <YAxis type="category" dataKey="name" width={100} tick={{ fontSize: 10, fill: '#94a3b8' }} axisLine={false} tickLine={false} />
+                  <Tooltip content={<CustomTooltip />} />
+                  <Bar dataKey="progress" name="Progress" fill="url(#goalGradient)" radius={[0, 4, 4, 0]} />
+                </BarChart>
+              </ResponsiveContainer>
+            ) : (
+              <div className="flex items-center justify-center h-48">
+                <p className="text-xs text-muted-foreground">No active goals</p>
               </div>
-            </ScrollArea>
+            )}
           </CardContent>
         </Card>
       </div>

@@ -37,9 +37,12 @@ import {
   Lightbulb,
   Save,
   X,
+  Eye,
+  Edit3,
 } from 'lucide-react';
 import { useToast } from '@/hooks/use-toast';
 import { useAppStore } from '@/lib/store';
+import ReactMarkdown from 'react-markdown';
 
 interface Memory {
   id: string;
@@ -456,11 +459,29 @@ export function MemoryView() {
               <ScrollArea className="flex-1 p-4">
                 {editMode ? (
                   <div className="space-y-4">
+                    <div className="grid grid-cols-2 gap-2">
+                      <Button
+                        variant={editMode ? 'default' : 'ghost'}
+                        size="sm"
+                        className={`text-xs h-7 ${editMode ? 'bg-emerald-600' : ''}`}
+                        onClick={() => setEditMode(true)}
+                      >
+                        <Edit3 className="w-3 h-3 mr-1" /> Edit
+                      </Button>
+                      <Button
+                        variant="ghost"
+                        size="sm"
+                        className="text-xs h-7"
+                        onClick={() => setEditMode(false)}
+                      >
+                        <Eye className="w-3 h-3 mr-1" /> Preview
+                      </Button>
+                    </div>
                     <Textarea
                       value={editContent.content}
                       onChange={(e) => setEditContent({ ...editContent, content: e.target.value })}
                       className="bg-secondary border-border min-h-64 font-mono text-sm"
-                      placeholder="Write content here..."
+                      placeholder="Write content here... (Markdown supported)"
                     />
                     <div className="grid grid-cols-2 gap-4">
                       <div className="space-y-1">
@@ -489,9 +510,25 @@ export function MemoryView() {
                   </div>
                 ) : (
                   <div className="prose prose-invert prose-sm max-w-none">
-                    <div className="whitespace-pre-wrap text-sm leading-relaxed">
+                    <ReactMarkdown
+                      components={{
+                        h1: ({ children }) => <h1 className="text-lg font-bold text-foreground mb-2">{children}</h1>,
+                        h2: ({ children }) => <h2 className="text-base font-semibold text-foreground mb-1.5">{children}</h2>,
+                        h3: ({ children }) => <h3 className="text-sm font-medium text-foreground mb-1">{children}</h3>,
+                        p: ({ children }) => <p className="text-sm text-foreground/90 mb-2 leading-relaxed">{children}</p>,
+                        ul: ({ children }) => <ul className="text-sm text-foreground/90 mb-2 list-disc pl-4 space-y-1">{children}</ul>,
+                        ol: ({ children }) => <ol className="text-sm text-foreground/90 mb-2 list-decimal pl-4 space-y-1">{children}</ol>,
+                        li: ({ children }) => <li className="text-sm">{children}</li>,
+                        code: ({ children }) => <code className="bg-secondary px-1.5 py-0.5 rounded text-emerald-400 text-xs font-mono">{children}</code>,
+                        pre: ({ children }) => <pre className="bg-secondary p-3 rounded-lg mb-2 overflow-x-auto">{children}</pre>,
+                        blockquote: ({ children }) => <blockquote className="border-l-2 border-emerald-500 pl-3 italic text-muted-foreground mb-2">{children}</blockquote>,
+                        a: ({ children, href }) => <a href={href} className="text-emerald-400 hover:underline" target="_blank" rel="noopener noreferrer">{children}</a>,
+                        strong: ({ children }) => <strong className="font-semibold text-foreground">{children}</strong>,
+                        em: ({ children }) => <em className="italic text-foreground/80">{children}</em>,
+                      }}
+                    >
                       {selectedMemory.content}
-                    </div>
+                    </ReactMarkdown>
                   </div>
                 )}
               </ScrollArea>
