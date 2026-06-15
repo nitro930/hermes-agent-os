@@ -1,0 +1,108 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "sqlite"
+  url      = env("DATABASE_URL")
+}
+
+model Agent {
+  id          String   @id @default(cuid())
+  name        String
+  description String
+  type        String   @default("general") // general, research, coding, writing, voice, orchestration
+  status      String   @default("idle") // idle, running, error, paused
+  avatar      String?
+  systemPrompt String?
+  model       String   @default("default")
+  teamId      String?
+  team        Team?    @relation(fields: [teamId], references: [id])
+  tasks       Task[]
+  memories    Memory[]
+  conversations Conversation[]
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+}
+
+model Team {
+  id          String   @id @default(cuid())
+  name        String
+  description String
+  color       String   @default("#6366f1")
+  agents      Agent[]
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+}
+
+model Task {
+  id          String   @id @default(cuid())
+  title       String
+  description String?
+  status      String   @default("todo") // todo, in_progress, review, done
+  priority    String   @default("medium") // low, medium, high, urgent
+  column      String   @default("todo")
+  order       Int      @default(0)
+  agentId     String?
+  agent       Agent?   @relation(fields: [agentId], references: [id])
+  tags        String?  // comma-separated tags
+  dueDate     String?
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+}
+
+model Memory {
+  id          String   @id @default(cuid())
+  title       String
+  content     String
+  type        String   @default("note") // note, document, reference, log
+  tags        String?  // comma-separated tags
+  folder      String   @default("General")
+  agentId     String?
+  agent       Agent?   @relation(fields: [agentId], references: [id])
+  isPinned    Boolean  @default(false)
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+}
+
+model Conversation {
+  id          String   @id @default(cuid())
+  title       String
+  agentId     String
+  agent       Agent    @relation(fields: [agentId], references: [id])
+  messages    Message[]
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+}
+
+model Message {
+  id             String       @id @default(cuid())
+  conversationId String
+  conversation   Conversation @relation(fields: [conversationId], references: [id])
+  role           String       // user, assistant, system
+  content        String
+  createdAt      DateTime     @default(now())
+}
+
+model Automation {
+  id          String   @id @default(cuid())
+  name        String
+  description String?
+  trigger     String   // event type: on_message, on_task_create, on_schedule, on_agent_idle
+  action      String   // action type: send_message, create_task, run_agent, notify
+  config      String   // JSON config
+  isActive    Boolean  @default(true)
+  lastRunAt   DateTime?
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+}
+
+model ActivityLog {
+  id        String   @id @default(cuid())
+  agentId   String?
+  agentName String?
+  action    String
+  details   String?
+  type      String   @default("info") // info, success, warning, error
+  createdAt DateTime @default(now())
+}

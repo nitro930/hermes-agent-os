@@ -1,0 +1,92 @@
+[
+  {
+    "url": "https://dust.tt/blog/agent-operating-system",
+    "name": "What is an Agent Operating System? A Guide to Running AI  - Dust",
+    "snippet": "An agent operating system is a coordination layer that manages memory, tools, scheduling, and access control for AI agents so they can work ...",
+    "host_name": "dust.tt",
+    "rank": 0,
+    "date": "",
+    "favicon": ""
+  },
+  {
+    "url": "https://www.preprints.org/manuscript/202509.0077",
+    "name": "A Blueprint Architecture for Real-Time, Secure, and Scalable AI Agents",
+    "snippet": "An Agent Operating System (Agent-OS) elevates agent-centric computation to a first-class platform abstraction, much as traditional operating ...\nAn Agent Operating System (Agent-OS) elevates agent-centric ... The Agent-OS enforces tailored scheduling, I/O, memory, and ...",
+    "host_name": "www.preprints.org",
+    "rank": 1,
+    "date": "",
+    "favicon": ""
+  },
+  {
+    "url": "https://www.techrxiv.org/doi/10.36227/techrxiv.175736224.43024590",
+    "name": "A Blueprint Architecture for Real-Time, Secure, and Scalable AI Agents",
+    "snippet": "This paper introduces the conceptual Agent Operating System (Agent-OS) as a computational substrate for agentic workflows. memory, tools, ...",
+    "host_name": "www.techrxiv.org",
+    "rank": 2,
+    "date": "",
+    "favicon": ""
+  },
+  {
+    "url": "https://www.facebook.com/groups/DeepNetGroup/posts/2742070289519169",
+    "name": "State of AI agents in 2026: benchmarks, market data, and future",
+    "snippet": "I put together a comprehensive deck on the state of AI agents as of February 2026. 200+ sourced slides covering benchmarks, market data, ...",
+    "host_name": "www.facebook.com",
+    "rank": 3,
+    "date": "",
+    "favicon": ""
+  },
+  {
+    "url": "https://www.reddit.com/r/AISEOInsider/comments/1tyy7zd/ai_agent_operating_system_2026_the_workflow",
+    "name": "AI Agent Operating System (2026): The Workflow Upgrade Is Wild",
+    "snippet": "Claude, NotebookLM, and Minimax are useful alone, but the real power starts when they live inside one dashboard and share the same memory. The ...",
+    "host_name": "www.reddit.com",
+    "rank": 4,
+    "date": "",
+    "favicon": ""
+  },
+  {
+    "url": "https://www.pwc.com/us/en/services/ai/agent-os.html",
+    "name": "PwC's agent OS: Integrate and govern enterprise AI agents: PwC",
+    "snippet": "Scale AI agent value across your enterprise. PwC's agent OS connects agents, people and systems into orchestrated, governed workflows.",
+    "host_name": "www.pwc.com",
+    "rank": 5,
+    "date": "",
+    "favicon": ""
+  },
+  {
+    "url": "https://www.mindstudio.ai/blog/what-is-agentic-operating-system",
+    "name": "What Is an Agentic Operating System? The Six-Layer Infrastructure",
+    "snippet": "An agentic OS connects memory, tools, orchestration, and workflows into a six-layer infrastructure stack so AI agents can run business processes ...",
+    "host_name": "www.mindstudio.ai",
+    "rank": 6,
+    "date": "",
+    "favicon": ""
+  },
+  {
+    "url": "https://os-for-agent.github.io",
+    "name": "AgenticOS 2026 | Operating Systems Design for AI Agents",
+    "snippet": "Our goal is to define the primitives, isolation models, scheduling techniques, and observability mechanisms necessary to build operating systems explicitly ...",
+    "host_name": "os-for-agent.github.io",
+    "rank": 7,
+    "date": "",
+    "favicon": ""
+  },
+  {
+    "url": "https://medium.com/google-cloud/from-agent-os-to-agent-processor-unit-cdd797fb6287",
+    "name": "From Agent OS to Agent Processor Unit - Google Cloud - Medium",
+    "snippet": "The result is the Agent Processor Unit an open-source architecture that applies hardware-level design principles to AI agent memory and task ...",
+    "host_name": "medium.com",
+    "rank": 8,
+    "date": "",
+    "favicon": ""
+  },
+  {
+    "url": "https://mem0.ai/blog/state-of-ai-agent-memory-2026",
+    "name": "State of AI Agent Memory 2026: Benchmarks, Architectures  - Mem0",
+    "snippet": "Quick Takeaways. LoCoMo, LongMemEval, and BEAM benchmarks are now the standard for comparing memory architectures.",
+    "host_name": "mem0.ai",
+    "rank": 9,
+    "date": "",
+    "favicon": ""
+  }
+]
