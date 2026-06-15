@@ -18,9 +18,13 @@ import {
   Plug,
   Sun,
   Moon,
+  Bell,
+  Search,
 } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Separator } from '@/components/ui/separator';
+import { Badge } from '@/components/ui/badge';
+import { ScrollArea } from '@/components/ui/scroll-area';
 import { cn } from '@/lib/utils';
 import { useTheme } from 'next-themes';
 import { useEffect, useState } from 'react';
@@ -40,13 +44,23 @@ const navItems: { view: ActiveView; label: string; icon: React.ElementType }[] =
 ];
 
 export function Sidebar() {
-  const { activeView, setActiveView, sidebarOpen, setSidebarOpen } = useAppStore();
+  const { activeView, setActiveView, sidebarOpen, setSidebarOpen, notifications, markNotificationRead, clearNotifications } = useAppStore();
   const { theme, setTheme } = useTheme();
   const [mounted, setMounted] = useState(false);
+  const [showNotifications, setShowNotifications] = useState(false);
 
   useEffect(() => {
     setMounted(true);
   }, []);
+
+  const unreadCount = notifications.filter(n => !n.read).length;
+
+  const notifTypeColors: Record<string, string> = {
+    info: 'text-blue-400',
+    success: 'text-emerald-400',
+    warning: 'text-yellow-400',
+    error: 'text-red-400',
+  };
 
   return (
     <div
@@ -93,19 +107,48 @@ export function Sidebar() {
 
       <Separator className="bg-sidebar-border" />
 
-      {/* Theme toggle + System status */}
-      <div className="px-4 py-3 flex items-center justify-between">
-        {mounted && (
+      {/* Theme toggle + Notifications + System status */}
+      <div className="px-4 py-3 space-y-2">
+        <div className="flex items-center justify-between">
+          {mounted && (
+            <Button
+              variant="ghost"
+              size="icon"
+              className="w-8 h-8 text-muted-foreground hover:text-foreground"
+              onClick={() => setTheme(theme === 'dark' ? 'light' : 'dark')}
+              title={theme === 'dark' ? 'Switch to light mode' : 'Switch to dark mode'}
+            >
+              {theme === 'dark' ? <Sun className="w-4 h-4" /> : <Moon className="w-4 h-4" />}
+            </Button>
+          )}
+          <div className="relative">
+            <Button
+              variant="ghost"
+              size="icon"
+              className="w-8 h-8 text-muted-foreground hover:text-foreground"
+              onClick={() => setShowNotifications(!showNotifications)}
+            >
+              <Bell className="w-4 h-4" />
+              {unreadCount > 0 && (
+                <span className="absolute -top-0.5 -right-0.5 w-4 h-4 rounded-full bg-red-500 text-[9px] text-white flex items-center justify-center font-bold">
+                  {unreadCount > 9 ? '9+' : unreadCount}
+                </span>
+              )}
+            </Button>
+          </div>
           <Button
             variant="ghost"
             size="icon"
             className="w-8 h-8 text-muted-foreground hover:text-foreground"
-            onClick={() => setTheme(theme === 'dark' ? 'light' : 'dark')}
-            title={theme === 'dark' ? 'Switch to light mode' : 'Switch to dark mode'}
+            onClick={() => {
+              // Trigger Cmd+K programmatically
+              document.dispatchEvent(new KeyboardEvent('keydown', { key: 'k', metaKey: true, ctrlKey: true }));
+            }}
+            title="Search (Cmd+K)"
           >
-            {theme === 'dark' ? <Sun className="w-4 h-4" /> : <Moon className="w-4 h-4" />}
+            <Search className="w-4 h-4" />
           </Button>
-        )}
+        </div>
         {sidebarOpen && (
           <div className="flex items-center gap-2">
             <div className="w-2 h-2 rounded-full bg-emerald-500 pulse-emerald" />
@@ -113,6 +156,62 @@ export function Sidebar() {
           </div>
         )}
       </div>
+
+      {/* Notification Panel */}
+      {showNotifications && (
+        <div className="absolute left-full bottom-16 ml-2 w-80 bg-card border border-border rounded-lg shadow-xl z-50">
+          <div className="flex items-center justify-between p-3 border-b border-border">
+            <span className="text-sm font-medium">Notifications</span>
+            <div className="flex items-center gap-2">
+              {notifications.length > 0 && (
+                <Button variant="ghost" size="sm" className="text-xs h-6 text-muted-foreground" onClick={clearNotifications}>
+                  Clear all
+                </Button>
+              )}
+              <Button variant="ghost" size="icon" className="w-5 h-5" onClick={() => setShowNotifications(false)}>
+                ×
+              </Button>
+            </div>
+          </div>
+          <ScrollArea className="h-64">
+            {notifications.length === 0 ? (
+              <div className="flex items-center justify-center h-20 text-xs text-muted-foreground">
+                No notifications yet
+              </div>
+            ) : (
+              <div className="p-2 space-y-1">
+                {notifications.slice(0, 20).map((notif) => (
+                  <div
+                    key={notif.id}
+                    className={`p-2.5 rounded-lg cursor-pointer transition-colors ${
+                      notif.read ? 'opacity-60' : 'bg-secondary/50'
+                    }`}
+                    onClick={() => markNotificationRead(notif.id)}
+                  >
+                    <div className="flex items-start gap-2">
+                      <div className={`mt-0.5 shrink-0 ${notifTypeColors[notif.type]}`}>
+                        <Bell className="w-3 h-3" />
+                      </div>
+                      <div className="flex-1 min-w-0">
+                        <p className="text-xs font-medium truncate">{notif.title}</p>
+                        {notif.description && (
+                          <p className="text-[10px] text-muted-foreground mt-0.5 truncate">{notif.description}</p>
+                        )}
+                        <p className="text-[9px] text-muted-foreground/50 mt-0.5">
+                          {new Date(notif.timestamp).toLocaleTimeString()}
+                        </p>
+                      </div>
+                      {!notif.read && (
+                        <div className="w-1.5 h-1.5 rounded-full bg-emerald-500 shrink-0 mt-1" />
+                      )}
+                    </div>
+                  </div>
+                ))}
+              </div>
+            )}
+          </ScrollArea>
+        </div>
+      )}
 
       {/* Collapse toggle */}
       <button

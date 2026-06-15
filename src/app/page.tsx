@@ -15,6 +15,8 @@ import { GoalsView } from '@/components/agent-os/goals-view';
 import { VoiceView } from '@/components/agent-os/voice-view';
 import { McpView } from '@/components/agent-os/mcp-view';
 import { ErrorBoundary } from '@/components/agent-os/error-boundary';
+import { CommandPalette } from '@/components/agent-os/command-palette';
+import { useNotifications } from '@/hooks/use-notifications';
 
 function ViewRenderer() {
   const { activeView } = useAppStore();
@@ -49,6 +51,7 @@ function ViewRenderer() {
 
 export default function Home() {
   const [seeded, setSeeded] = useState(false);
+  useNotifications(); // Enable real-time notifications
 
   useEffect(() => {
     async function seedData() {
@@ -95,6 +98,7 @@ export default function Home() {
           <ViewRenderer />
         </ErrorBoundary>
       </main>
+      <CommandPalette />
     </div>
   );
 }
