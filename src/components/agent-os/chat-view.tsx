@@ -123,10 +123,12 @@ export function ChatView() {
     }
 
     // Try browser SpeechRecognition first
-    const SpeechRecognition = (window as unknown as { SpeechRecognition?: typeof window.SpeechRecognition; webkitSpeechRecognition?: typeof window.SpeechRecognition }).SpeechRecognition || (window as unknown as { webkitSpeechRecognition?: typeof window.SpeechRecognition }).webkitSpeechRecognition;
+    type SpeechRecognitionCtor = new () => EventTarget & { continuous: boolean; interimResults: boolean; lang: string; start: () => void; stop: () => void; onstart: (() => void) | null; onend: (() => void) | null; onerror: ((ev: Event) => void) | null; onresult: ((ev: Event) => void) | null };
+    const win = window as unknown as { SpeechRecognition?: SpeechRecognitionCtor; webkitSpeechRecognition?: SpeechRecognitionCtor };
+    const SpeechRecognitionCtor = win.SpeechRecognition || win.webkitSpeechRecognition;
     
-    if (SpeechRecognition) {
-      const recognition = new SpeechRecognition();
+    if (SpeechRecognitionCtor) {
+      const recognition = new SpeechRecognitionCtor();
       recognition.continuous = false;
       recognition.interimResults = false;
       recognition.lang = 'en-US';
@@ -135,8 +137,9 @@ export function ChatView() {
       recognition.onend = () => setIsListening(false);
       recognition.onerror = () => setIsListening(false);
       
-      recognition.onresult = (event: SpeechRecognitionEvent) => {
-        const transcript = event.results[0][0].transcript;
+      recognition.onresult = (event: Event) => {
+        const srEvent = event as unknown as { results: { 0: { 0: { transcript: string } } } };
+        const transcript = srEvent.results[0][0].transcript;
         setInput(prev => prev ? prev + ' ' + transcript : transcript);
       };
 

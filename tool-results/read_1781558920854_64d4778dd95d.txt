@@ -1,0 +1,651 @@
+     1→'use client';
+     2→
+     3→import { useEffect, useState, useCallback } from 'react';
+     4→import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
+     5→import { Button } from '@/components/ui/button';
+     6→import { Badge } from '@/components/ui/badge';
+     7→import { ScrollArea } from '@/components/ui/scroll-area';
+     8→import { Input } from '@/components/ui/input';
+     9→import { Textarea } from '@/components/ui/textarea';
+    10→import {
+    11→  Dialog,
+    12→  DialogContent,
+    13→  DialogHeader,
+    14→  DialogTitle,
+    15→  DialogTrigger,
+    16→  DialogFooter,
+    17→  DialogDescription,
+    18→} from '@/components/ui/dialog';
+    19→import {
+    20→  Select,
+    21→  SelectContent,
+    22→  SelectItem,
+    23→  SelectTrigger,
+    24→  SelectValue,
+    25→} from '@/components/ui/select';
+    26→import { Label } from '@/components/ui/label';
+    27→import {
+    28→  Plus,
+    29→  Play,
+    30→  Pause,
+    31→  Square,
+    32→  Trash2,
+    33→  Bot,
+    34→  ChevronRight,
+    35→  X,
+    36→  Wrench,
+    37→  Target,
+    38→  Lightbulb,
+    39→  Pencil,
+    40→  Save,
+    41→  Users,
+    42→  Loader2,
+    43→  Zap,
+    44→} from 'lucide-react';
+    45→import { useToast } from '@/hooks/use-toast';
+    46→
+    47→interface Agent {
+    48→  id: string;
+    49→  name: string;
+    50→  description: string;
+    51→  type: string;
+    52→  status: string;
+    53→  avatar: string | null;
+    54→  systemPrompt: string | null;
+    55→  soulMd: string | null;
+    56→  model: string;
+    57→  teamId: string | null;
+    58→  team?: { id: string; name: string; color: string } | null;
+    59→  tasks?: { id: string; title: string; status: string }[];
+    60→  memories?: { id: string; title: string }[];
+    61→  conversations?: { id: string; title: string }[];
+    62→  skills?: { id: string; name: string; category: string; isAutoLearned: boolean; usageCount: number }[];
+    63→  goals?: { id: string; title: string; status: string; progress: number }[];
+    64→  delegates?: { id: string; name: string; status: string; task: string }[];
+    65→}
+    66→
+    67→const statusColors: Record<string, string> = {
+    68→  idle: 'bg-slate-500',
+    69→  running: 'bg-emerald-500',
+    70→  error: 'bg-red-500',
+    71→  paused: 'bg-yellow-500',
+    72→};
+    73→
+    74→const statusBadgeColors: Record<string, string> = {
+    75→  idle: 'bg-slate-500/20 text-slate-400 border-slate-500/30',
+    76→  running: 'bg-emerald-500/20 text-emerald-400 border-emerald-500/30',
+    77→  error: 'bg-red-500/20 text-red-400 border-red-500/30',
+    78→  paused: 'bg-yellow-500/20 text-yellow-400 border-yellow-500/30',
+    79→};
+    80→
+    81→const typeColors: Record<string, string> = {
+    82→  general: 'bg-slate-500/20 text-slate-400',
+    83→  research: 'bg-blue-500/20 text-blue-400',
+    84→  coding: 'bg-purple-500/20 text-purple-400',
+    85→  writing: 'bg-yellow-500/20 text-yellow-400',
+    86→  voice: 'bg-pink-500/20 text-pink-400',
+    87→  orchestration: 'bg-emerald-500/20 text-emerald-400',
+    88→};
+    89→
+    90→const categoryColors: Record<string, string> = {
+    91→  general: 'bg-slate-500/20 text-slate-400',
+    92→  research: 'bg-blue-500/20 text-blue-400',
+    93→  coding: 'bg-purple-500/20 text-purple-400',
+    94→  writing: 'bg-yellow-500/20 text-yellow-400',
+    95→  automation: 'bg-emerald-500/20 text-emerald-400',
+    96→  communication: 'bg-pink-500/20 text-pink-400',
+    97→};
+    98→
+    99→const goalStatusColors: Record<string, string> = {
+   100→  active: 'bg-emerald-500/20 text-emerald-400',
+   101→  completed: 'bg-blue-500/20 text-blue-400',
+   102→  abandoned: 'bg-slate-500/20 text-slate-400',
+   103→};
+   104→
+   105→const delegateStatusColors: Record<string, string> = {
+   106→  pending: 'bg-yellow-500/20 text-yellow-400',
+   107→  running: 'bg-emerald-500/20 text-emerald-400',
+   108→  completed: 'bg-blue-500/20 text-blue-400',
+   109→  failed: 'bg-red-500/20 text-red-400',
+   110→};
+   111→
+   112→export function AgentsView() {
+   113→  const { toast } = useToast();
+   114→  const [agents, setAgents] = useState<Agent[]>([]);
+   115→  const [selectedAgent, setSelectedAgent] = useState<Agent | null>(null);
+   116→  const [loading, setLoading] = useState(true);
+   117→  const [createOpen, setCreateOpen] = useState(false);
+   118→  const [editingSoulMd, setEditingSoulMd] = useState(false);
+   119→  const [soulMdValue, setSoulMdValue] = useState('');
+   120→  const [isRunning, setIsRunning] = useState(false);
+   121→  const [runResult, setRunResult] = useState<{ executionPlan: string; taskResult: Record<string, unknown> | null } | null>(null);
+   122→  const [newAgent, setNewAgent] = useState({
+   123→    name: '',
+   124→    description: '',
+   125→    type: 'general',
+   126→    systemPrompt: '',
+   127→    model: 'default',
+   128→  });
+   129→
+   130→  const loadAgents = useCallback(async () => {
+   131→    try {
+   132→      const res = await fetch('/api/agents');
+   133→      if (res.ok) setAgents(await res.json());
+   134→    } catch (error) {
+   135→      console.error('Failed to load agents:', error);
+   136→    } finally {
+   137→      setLoading(false);
+   138→    }
+   139→  }, []);
+   140→
+   141→  useEffect(() => {
+   142→    loadAgents();
+   143→  }, [loadAgents]);
+   144→
+   145→  async function createAgent() {
+   146→    try {
+   147→      const res = await fetch('/api/agents', {
+   148→        method: 'POST',
+   149→        headers: { 'Content-Type': 'application/json' },
+   150→        body: JSON.stringify(newAgent),
+   151→      });
+   152→      if (res.ok) {
+   153→        toast({ title: 'Agent created successfully' });
+   154→        setCreateOpen(false);
+   155→        setNewAgent({ name: '', description: '', type: 'general', systemPrompt: '', model: 'default' });
+   156→        loadAgents();
+   157→      }
+   158→    } catch {
+   159→      toast({ title: 'Failed to create agent', variant: 'destructive' });
+   160→    }
+   161→  }
+   162→
+   163→  async function updateAgentStatus(id: string, status: string) {
+   164→    try {
+   165→      const res = await fetch(`/api/agents/${id}`, {
+   166→        method: 'PATCH',
+   167→        headers: { 'Content-Type': 'application/json' },
+   168→        body: JSON.stringify({ status }),
+   169→      });
+   170→      if (res.ok) {
+   171→        toast({ title: `Agent status updated to ${status}` });
+   172→        loadAgents();
+   173→        if (selectedAgent?.id === id) {
+   174→          const detail = await (await fetch(`/api/agents/${id}`)).json();
+   175→          setSelectedAgent(detail);
+   176→        }
+   177→      }
+   178→    } catch {
+   179→      toast({ title: 'Failed to update agent status', variant: 'destructive' });
+   180→    }
+   181→  }
+   182→
+   183→  async function updateSoulMd() {
+   184→    if (!selectedAgent) return;
+   185→    try {
+   186→      const res = await fetch(`/api/agents/${selectedAgent.id}`, {
+   187→        method: 'PATCH',
+   188→        headers: { 'Content-Type': 'application/json' },
+   189→        body: JSON.stringify({ soulMd: soulMdValue }),
+   190→      });
+   191→      if (res.ok) {
+   192→        toast({ title: 'SOUL.md updated successfully' });
+   193→        setEditingSoulMd(false);
+   194→        loadAgents();
+   195→        const detail = await (await fetch(`/api/agents/${selectedAgent.id}`)).json();
+   196→        setSelectedAgent(detail);
+   197→      }
+   198→    } catch {
+   199→      toast({ title: 'Failed to update SOUL.md', variant: 'destructive' });
+   200→    }
+   201→  }
+   202→
+   203→  async function deleteAgent(id: string) {
+   204→    try {
+   205→      const res = await fetch(`/api/agents/${id}`, { method: 'DELETE' });
+   206→      if (res.ok) {
+   207→        toast({ title: 'Agent deleted' });
+   208→        if (selectedAgent?.id === id) setSelectedAgent(null);
+   209→        loadAgents();
+   210→      }
+   211→    } catch {
+   212→      toast({ title: 'Failed to delete agent', variant: 'destructive' });
+   213→    }
+   214→  }
+   215→
+   216→  async function runAgent(id: string) {
+   217→    setIsRunning(true);
+   218→    setRunResult(null);
+   219→    try {
+   220→      const res = await fetch(`/api/agents/${id}/run`, { method: 'POST' });
+   221→      if (res.ok) {
+   222→        const data = await res.json();
+   223→        setRunResult({ executionPlan: data.executionPlan, taskResult: data.taskResult });
+   224→        toast({ title: `${data.agentName} is now running`, description: `${data.pendingTasks} pending tasks` });
+   225→        loadAgents();
+   226→        const detail = await (await fetch(`/api/agents/${id}`)).json();
+   227→        setSelectedAgent(detail);
+   228→      } else {
+   229→        toast({ title: 'Failed to run agent', variant: 'destructive' });
+   230→      }
+   231→    } catch {
+   232→      toast({ title: 'Failed to run agent', variant: 'destructive' });
+   233→    } finally {
+   234→      setIsRunning(false);
+   235→    }
+   236→  }
+   237→
+   238→  async function selectAgent(agent: Agent) {
+   239→    try {
+   240→      const res = await fetch(`/api/agents/${agent.id}`);
+   241→      if (res.ok) {
+   242→        const data = await res.json();
+   243→        setSelectedAgent(data);
+   244→        setSoulMdValue(data.soulMd || '');
+   245→      }
+   246→    } catch {
+   247→      setSelectedAgent(agent);
+   248→      setSoulMdValue(agent.soulMd || '');
+   249→    }
+   250→  }
+   251→
+   252→  if (loading) {
+   253→    return (
+   254→      <div className="flex items-center justify-center h-full">
+   255→        <div className="w-8 h-8 border-2 border-emerald-500 border-t-transparent rounded-full animate-spin" />
+   256→      </div>
+   257→    );
+   258→  }
+   259→
+   260→  return (
+   261→    <div className="space-y-6">
+   262→      {/* Header */}
+   263→      <div className="flex items-center justify-between">
+   264→        <div>
+   265→          <h1 className="text-2xl font-bold">Agents</h1>
+   266→          <p className="text-sm text-muted-foreground">Manage and monitor your AI agents</p>
+   267→        </div>
+   268→        <Dialog open={createOpen} onOpenChange={setCreateOpen}>
+   269→          <DialogTrigger asChild>
+   270→            <Button className="bg-emerald-600 hover:bg-emerald-700 text-white">
+   271→              <Plus className="w-4 h-4 mr-1.5" />
+   272→              New Agent
+   273→            </Button>
+   274→          </DialogTrigger>
+   275→          <DialogContent className="bg-card border-border">
+   276→            <DialogHeader>
+   277→              <DialogTitle>Create New Agent</DialogTitle>
+   278→              <DialogDescription>Add a new AI agent to your workspace</DialogDescription>
+   279→            </DialogHeader>
+   280→            <div className="space-y-4">
+   281→              <div className="space-y-2">
+   282→                <Label>Name</Label>
+   283→                <Input
+   284→                  value={newAgent.name}
+   285→                  onChange={(e) => setNewAgent({ ...newAgent, name: e.target.value })}
+   286→                  placeholder="Agent name..."
+   287→                  className="bg-secondary border-border"
+   288→                />
+   289→              </div>
+   290→              <div className="space-y-2">
+   291→                <Label>Description</Label>
+   292→                <Input
+   293→                  value={newAgent.description}
+   294→                  onChange={(e) => setNewAgent({ ...newAgent, description: e.target.value })}
+   295→                  placeholder="Brief description..."
+   296→                  className="bg-secondary border-border"
+   297→                />
+   298→              </div>
+   299→              <div className="space-y-2">
+   300→                <Label>Type</Label>
+   301→                <Select value={newAgent.type} onValueChange={(v) => setNewAgent({ ...newAgent, type: v })}>
+   302→                  <SelectTrigger className="bg-secondary border-border">
+   303→                    <SelectValue />
+   304→                  </SelectTrigger>
+   305→                  <SelectContent className="bg-card border-border">
+   306→                    <SelectItem value="general">General</SelectItem>
+   307→                    <SelectItem value="research">Research</SelectItem>
+   308→                    <SelectItem value="coding">Coding</SelectItem>
+   309→                    <SelectItem value="writing">Writing</SelectItem>
+   310→                    <SelectItem value="voice">Voice</SelectItem>
+   311→                    <SelectItem value="orchestration">Orchestration</SelectItem>
+   312→                  </SelectContent>
+   313→                </Select>
+   314→              </div>
+   315→              <div className="space-y-2">
+   316→                <Label>System Prompt</Label>
+   317→                <Textarea
+   318→                  value={newAgent.systemPrompt}
+   319→                  onChange={(e) => setNewAgent({ ...newAgent, systemPrompt: e.target.value })}
+   320→                  placeholder="Instructions for the agent..."
+   321→                  className="bg-secondary border-border min-h-20"
+   322→                />
+   323→              </div>
+   324→            </div>
+   325→            <DialogFooter>
+   326→              <Button variant="outline" onClick={() => setCreateOpen(false)}>
+   327→                Cancel
+   328→              </Button>
+   329→              <Button
+   330→                className="bg-emerald-600 hover:bg-emerald-700 text-white"
+   331→                onClick={createAgent}
+   332→                disabled={!newAgent.name}
+   333→              >
+   334→                Create Agent
+   335→              </Button>
+   336→            </DialogFooter>
+   337→          </DialogContent>
+   338→        </Dialog>
+   339→      </div>
+   340→
+   341→      <div className="flex gap-4">
+   342→        {/* Agent List */}
+   343→        <div className={`flex-1 ${selectedAgent ? 'max-w-[50%]' : ''}`}>
+   344→          <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+   345→            {agents.map((agent) => (
+   346→              <Card
+   347→                key={agent.id}
+   348→                className={`bg-card border-border cursor-pointer transition-all hover:border-emerald-500/30 ${
+   349→                  selectedAgent?.id === agent.id ? 'border-emerald-500/50 glow-emerald' : ''
+   350→                }`}
+   351→                onClick={() => selectAgent(agent)}
+   352→              >
+   353→                <CardContent className="p-4">
+   354→                  <div className="flex items-start gap-3">
+   355→                    <div className="flex items-center justify-center w-10 h-10 rounded-lg bg-secondary text-lg shrink-0">
+   356→                      {agent.avatar || '🤖'}
+   357→                    </div>
+   358→                    <div className="flex-1 min-w-0">
+   359→                      <div className="flex items-center justify-between">
+   360→                        <p className="text-sm font-medium truncate">{agent.name}</p>
+   361→                        <div className={`w-2 h-2 rounded-full shrink-0 ml-2 ${statusColors[agent.status]} ${agent.status === 'running' ? 'pulse-emerald' : ''}`} />
+   362→                      </div>
+   363→                      <p className="text-xs text-muted-foreground mt-0.5 line-clamp-2">{agent.description}</p>
+   364→                      <div className="flex items-center gap-1.5 mt-2">
+   365→                        <Badge variant="outline" className={`text-[10px] ${typeColors[agent.type] || ''}`}>
+   366→                          {agent.type}
+   367→                        </Badge>
+   368→                        <Badge variant="outline" className={`text-[10px] ${statusBadgeColors[agent.status] || ''}`}>
+   369→                          {agent.status}
+   370→                        </Badge>
+   371→                      </div>
+   372→                    </div>
+   373→                  </div>
+   374→                </CardContent>
+   375→              </Card>
+   376→            ))}
+   377→          </div>
+   378→        </div>
+   379→
+   380→        {/* Agent Detail Panel */}
+   381→        {selectedAgent && (
+   382→          <Card className="flex-1 bg-card border-border max-h-[calc(100vh-12rem)]">
+   383→            <CardHeader className="pb-2">
+   384→              <div className="flex items-center justify-between">
+   385→                <div className="flex items-center gap-3">
+   386→                  <div className="flex items-center justify-center w-10 h-10 rounded-lg bg-secondary text-lg">
+   387→                    {selectedAgent.avatar || '🤖'}
+   388→                  </div>
+   389→                  <div>
+   390→                    <CardTitle className="text-base">{selectedAgent.name}</CardTitle>
+   391→                    <Badge variant="outline" className={`text-[10px] mt-1 ${statusBadgeColors[selectedAgent.status] || ''}`}>
+   392→                      {selectedAgent.status}
+   393→                    </Badge>
+   394→                  </div>
+   395→                </div>
+   396→                <Button variant="ghost" size="icon" onClick={() => setSelectedAgent(null)}>
+   397→                  <X className="w-4 h-4" />
+   398→                </Button>
+   399→              </div>
+   400→            </CardHeader>
+   401→            <CardContent className="p-4 pt-0">
+   402→              <ScrollArea className="h-[calc(100vh-20rem)]">
+   403→                <div className="space-y-4">
+   404→                  <div>
+   405→                    <p className="text-xs text-muted-foreground font-medium">Description</p>
+   406→                    <p className="text-sm mt-1">{selectedAgent.description}</p>
+   407→                  </div>
+   408→
+   409→                  {/* SOUL.md Section */}
+   410→                  <div>
+   411→                    <div className="flex items-center justify-between mb-1">
+   412→                      <p className="text-xs text-muted-foreground font-medium">SOUL.md</p>
+   413→                      {editingSoulMd ? (
+   414→                        <Button
+   415→                          size="sm"
+   416→                          variant="ghost"
+   417→                          className="h-5 text-[10px] text-emerald-400 hover:bg-emerald-500/10"
+   418→                          onClick={updateSoulMd}
+   419→                        >
+   420→                          <Save className="w-3 h-3 mr-0.5" /> Save
+   421→                        </Button>
+   422→                      ) : (
+   423→                        <Button
+   424→                          size="sm"
+   425→                          variant="ghost"
+   426→                          className="h-5 text-[10px] text-emerald-400 hover:bg-emerald-500/10"
+   427→                          onClick={() => {
+   428→                            setSoulMdValue(selectedAgent.soulMd || '');
+   429→                            setEditingSoulMd(true);
+   430→                          }}
+   431→                        >
+   432→                          <Pencil className="w-3 h-3 mr-0.5" /> Edit
+   433→                        </Button>
+   434→                      )}
+   435→                    </div>
+   436→                    {editingSoulMd ? (
+   437→                      <Textarea
+   438→                        value={soulMdValue}
+   439→                        onChange={(e) => setSoulMdValue(e.target.value)}
+   440→                        className="bg-secondary border-border min-h-24 text-xs font-mono"
+   441→                        placeholder="Define the agent's personality and behavior..."
+   442→                      />
+   443→                    ) : (
+   444→                      <p className="text-xs mt-1 text-foreground/80 bg-secondary p-2.5 rounded-md border border-border/50">
+   445→                        {selectedAgent.soulMd || 'No SOUL.md configured — define the agent\'s personality and core behaviors'}
+   446→                      </p>
+   447→                    )}
+   448→                  </div>
+   449→
+   450→                  <div>
+   451→                    <p className="text-xs text-muted-foreground font-medium">System Prompt</p>
+   452→                    <p className="text-xs mt-1 text-foreground/80 bg-secondary p-2 rounded-md">
+   453→                      {selectedAgent.systemPrompt || 'No system prompt configured'}
+   454→                    </p>
+   455→                  </div>
+   456→
+   457→                  <div>
+   458→                    <p className="text-xs text-muted-foreground font-medium">Team</p>
+   459→                    <p className="text-sm mt-1">
+   460→                      {selectedAgent.team ? (
+   461→                        <Badge variant="outline" style={{ borderColor: selectedAgent.team.color, color: selectedAgent.team.color }}>
+   462→                          {selectedAgent.team.name}
+   463→                        </Badge>
+   464→                      ) : (
+   465→                        'No team assigned'
+   466→                      )}
+   467→                    </p>
+   468→                  </div>
+   469→
+   470→                  {/* Status Controls */}
+   471→                  <div>
+   472→                    <p className="text-xs text-muted-foreground font-medium mb-2">Status Controls</p>
+   473→                    <div className="flex gap-2 flex-wrap">
+   474→                      <Button
+   475→                        size="sm"
+   476→                        variant="outline"
+   477→                        className="text-emerald-400 border-emerald-500/30 hover:bg-emerald-500/10"
+   478→                        onClick={() => runAgent(selectedAgent.id)}
+   479→                        disabled={isRunning}
+   480→                      >
+   481→                        {isRunning ? <Loader2 className="w-3 h-3 mr-1 animate-spin" /> : <Zap className="w-3 h-3 mr-1" />}
+   482→                        Run Agent
+   483→                      </Button>
+   484→                      <Button
+   485→                        size="sm"
+   486→                        variant="outline"
+   487→                        className="text-emerald-400 border-emerald-500/30 hover:bg-emerald-500/10"
+   488→                        onClick={() => updateAgentStatus(selectedAgent.id, 'running')}
+   489→                      >
+   490→                        <Play className="w-3 h-3 mr-1" /> Start
+   491→                      </Button>
+   492→                      <Button
+   493→                        size="sm"
+   494→                        variant="outline"
+   495→                        className="text-yellow-400 border-yellow-500/30 hover:bg-yellow-500/10"
+   496→                        onClick={() => updateAgentStatus(selectedAgent.id, 'paused')}
+   497→                      >
+   498→                        <Pause className="w-3 h-3 mr-1" /> Pause
+   499→                      </Button>
+   500→                      <Button
+   501→                        size="sm"
+   502→                        variant="outline"
+   503→                        className="text-slate-400 border-slate-500/30 hover:bg-slate-500/10"
+   504→                        onClick={() => updateAgentStatus(selectedAgent.id, 'idle')}
+   505→                      >
+   506→                        <Square className="w-3 h-3 mr-1" /> Stop
+   507→                      </Button>
+   508→                      <Button
+   509→                        size="sm"
+   510→                        variant="outline"
+   511→                        className="text-red-400 border-red-500/30 hover:bg-red-500/10"
+   512→                        onClick={() => deleteAgent(selectedAgent.id)}
+   513→                      >
+   514→                        <Trash2 className="w-3 h-3" />
+   515→                      </Button>
+   516→                    </div>
+   517→                  </div>
+   518→
+   519→                  {/* Execution Result */}
+   520→                  {runResult && (
+   521→                    <div>
+   522→                      <p className="text-xs text-muted-foreground font-medium mb-1">Execution Plan</p>
+   523→                      <div className="bg-emerald-500/5 border border-emerald-500/20 rounded-md p-3 space-y-2">
+   524→                        <p className="text-xs text-foreground/80 whitespace-pre-wrap">{runResult.executionPlan}</p>
+   525→                        {runResult.taskResult && (
+   526→                          <div className="border-t border-emerald-500/10 pt-2 mt-2">
+   527→                            <p className="text-[10px] text-emerald-400 font-medium">Task Processed: {String(runResult.taskResult.taskTitle)}</p>
+   528→                            <p className="text-[10px] text-muted-foreground mt-1 line-clamp-3">{String(runResult.taskResult.output)}</p>
+   529→                          </div>
+   530→                        )}
+   531→                      </div>
+   532→                    </div>
+   533→                  )}
+   534→
+   535→                  {/* Skills Section */}
+   536→                  {selectedAgent.skills && selectedAgent.skills.length > 0 && (
+   537→                    <div>
+   538→                      <div className="flex items-center gap-1.5 mb-2">
+   539→                        <Wrench className="w-3 h-3 text-purple-400" />
+   540→                        <p className="text-xs text-muted-foreground font-medium">Skills</p>
+   541→                      </div>
+   542→                      <div className="space-y-1.5">
+   543→                        {selectedAgent.skills.map((skill) => (
+   544→                          <div key={skill.id} className="flex items-center gap-2 text-xs p-2 bg-secondary rounded-md">
+   545→                            {skill.isAutoLearned ? (
+   546→                              <Lightbulb className="w-3 h-3 text-yellow-400" />
+   547→                            ) : (
+   548→                              <Wrench className="w-3 h-3 text-purple-400" />
+   549→                            )}
+   550→                            <span className="flex-1">{skill.name}</span>
+   551→                            <Badge variant="outline" className={`text-[9px] ${categoryColors[skill.category] || ''}`}>
+   552→                              {skill.category}
+   553→                            </Badge>
+   554→                            <span className="text-[9px] text-muted-foreground">{skill.usageCount}x</span>
+   555→                          </div>
+   556→                        ))}
+   557→                      </div>
+   558→                    </div>
+   559→                  )}
+   560→
+   561→                  {/* Goals Section */}
+   562→                  {selectedAgent.goals && selectedAgent.goals.length > 0 && (
+   563→                    <div>
+   564→                      <div className="flex items-center gap-1.5 mb-2">
+   565→                        <Target className="w-3 h-3 text-orange-400" />
+   566→                        <p className="text-xs text-muted-foreground font-medium">Active Goals</p>
+   567→                      </div>
+   568→                      <div className="space-y-1.5">
+   569→                        {selectedAgent.goals.map((goal) => (
+   570→                          <div key={goal.id} className="p-2 bg-secondary rounded-md">
+   571→                            <div className="flex items-center justify-between mb-1">
+   572→                              <span className="text-xs">{goal.title}</span>
+   573→                              <Badge variant="outline" className={`text-[9px] ${goalStatusColors[goal.status] || ''}`}>
+   574→                                {goal.status}
+   575→                              </Badge>
+   576→                            </div>
+   577→                            <div className="h-1 bg-secondary-foreground/10 rounded-full overflow-hidden">
+   578→                              <div
+   579→                                className="h-full rounded-full bg-emerald-500 transition-all"
+   580→                                style={{ width: `${goal.progress}%` }}
+   581→                              />
+   582→                            </div>
+   583→                          </div>
+   584→                        ))}
+   585→                      </div>
+   586→                    </div>
+   587→                  )}
+   588→
+   589→                  {/* Delegates Section */}
+   590→                  {selectedAgent.delegates && selectedAgent.delegates.length > 0 && (
+   591→                    <div>
+   592→                      <div className="flex items-center gap-1.5 mb-2">
+   593→                        <Users className="w-3 h-3 text-blue-400" />
+   594→                        <p className="text-xs text-muted-foreground font-medium">Delegates</p>
+   595→                      </div>
+   596→                      <div className="space-y-1.5">
+   597→                        {selectedAgent.delegates.map((delegate) => (
+   598→                          <div key={delegate.id} className="flex items-center gap-2 text-xs p-2 bg-secondary rounded-md">
+   599→                            <Users className="w-3 h-3 text-blue-400" />
+   600→                            <span className="flex-1 truncate">{delegate.name}</span>
+   601→                            <Badge variant="outline" className={`text-[9px] ${delegateStatusColors[delegate.status] || ''}`}>
+   602→                              {delegate.status}
+   603→                            </Badge>
+   604→                          </div>
+   605→                        ))}
+   606→                      </div>
+   607→                    </div>
+   608→                  )}
+   609→
+   610→                  {/* Assigned Tasks */}
+   611→                  {selectedAgent.tasks && selectedAgent.tasks.length > 0 && (
+   612→                    <div>
+   613→                      <p className="text-xs text-muted-foreground font-medium mb-2">Assigned Tasks</p>
+   614→                      <div className="space-y-1.5">
+   615→                        {selectedAgent.tasks.map((task) => (
+   616→                          <div key={task.id} className="flex items-center gap-2 text-xs p-2 bg-secondary rounded-md">
+   617→                            <ChevronRight className="w-3 h-3 text-emerald-400" />
+   618→                            <span className="flex-1">{task.title}</span>
+   619→                            <Badge variant="outline" className="text-[9px]">
+   620→                              {task.status}
+   621→                            </Badge>
+   622→                          </div>
+   623→                        ))}
+   624→                      </div>
+   625→                    </div>
+   626→                  )}
+   627→
+   628→                  {/* Memory Entries */}
+   629→                  {selectedAgent.memories && selectedAgent.memories.length > 0 && (
+   630→                    <div>
+   631→                      <p className="text-xs text-muted-foreground font-medium mb-2">Memory Entries</p>
+   632→                      <div className="space-y-1.5">
+   633→                        {selectedAgent.memories.map((mem) => (
+   634→                          <div key={mem.id} className="flex items-center gap-2 text-xs p-2 bg-secondary rounded-md">
+   635→                            <Bot className="w-3 h-3 text-purple-400" />
+   636→                            <span className="flex-1">{mem.title}</span>
+   637→                          </div>
+   638→                        ))}
+   639→                      </div>
+   640→                    </div>
+   641→                  )}
+   642→                </div>
+   643→              </ScrollArea>
+   644→            </CardContent>
+   645→          </Card>
+   646→        )}
+   647→      </div>
+   648→    </div>
+   649→  );
+   650→}
+   651→

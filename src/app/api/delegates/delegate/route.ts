@@ -1,14 +1,14 @@
 import { db } from '@/lib/db';
+import { delegateTaskSchema } from '@/lib/validations';
+import { ZodError } from 'zod';
 import { NextRequest, NextResponse } from 'next/server';
 
 export async function POST(request: NextRequest) {
   try {
     const body = await request.json();
-    const { parentAgentId, targetAgentId, task, description } = body;
-
-    if (!parentAgentId || !targetAgentId || !task) {
-      return NextResponse.json({ error: 'parentAgentId, targetAgentId, and task are required' }, { status: 400 });
-    }
+    const data = delegateTaskSchema.parse(body);
+    const parentAgentId = data.fromAgentId;
+    const targetAgentId = data.toAgentId;
 
     const parentAgent = await db.agent.findUnique({ where: { id: parentAgentId } });
     const targetAgent = await db.agent.findUnique({ where: { id: targetAgentId } });
@@ -20,10 +20,10 @@ export async function POST(request: NextRequest) {
     // Create the delegate
     const delegate = await db.delegate.create({
       data: {
-        name: `Delegation: ${task.slice(0, 50)}`,
-        description: description || `Delegated by ${parentAgent.name} to ${targetAgent.name}`,
+        name: `Delegation: ${data.task.slice(0, 50)}`,
+        description: `Delegated by ${parentAgent.name} to ${targetAgent.name}`,
         status: 'running',
-        task,
+        task: data.task,
         parentAgentId,
       },
     });
@@ -31,8 +31,8 @@ export async function POST(request: NextRequest) {
     // Create a task assigned to the target agent
     const newTask = await db.task.create({
       data: {
-        title: `[From ${parentAgent.name}] ${task}`,
-        description: description || `Delegated task from ${parentAgent.name}`,
+        title: `[From ${parentAgent.name}] ${data.task}`,
+        description: `Delegated task from ${parentAgent.name}`,
         status: 'todo',
         priority: 'medium',
         column: 'todo',
@@ -65,7 +65,7 @@ export async function POST(request: NextRequest) {
         agentId: targetAgentId,
         agentName: targetAgent.name,
         action: 'Task Delegated',
-        details: `${parentAgent.name} delegated "${task}" to ${targetAgent.name}`,
+        details: `${parentAgent.name} delegated "${data.task}" to ${targetAgent.name}`,
         type: 'info',
       },
     });
@@ -76,6 +76,12 @@ export async function POST(request: NextRequest) {
       message: `${parentAgent.name} delegated task to ${targetAgent.name}`,
     });
   } catch (error) {
+    if (error instanceof ZodError) {
+      return NextResponse.json(
+        { error: 'Validation failed', details: error.flatten().fieldErrors },
+        { status: 400 }
+      );
+    }
     console.error('Delegation error:', error);
     return NextResponse.json({ error: 'Failed to delegate task' }, { status: 500 });
   }

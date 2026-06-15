@@ -1,4 +1,6 @@
 import { db } from '@/lib/db';
+import { updateMcpSchema } from '@/lib/validations';
+import { ZodError } from 'zod';
 import { NextRequest, NextResponse } from 'next/server';
 
 export async function PATCH(
@@ -8,12 +10,20 @@ export async function PATCH(
   try {
     const { id } = await params;
     const body = await request.json();
+    const data = updateMcpSchema.parse(body);
+
     const server = await db.mcpServer.update({
       where: { id },
-      data: body,
+      data,
     });
     return NextResponse.json(server);
   } catch (error) {
+    if (error instanceof ZodError) {
+      return NextResponse.json(
+        { error: 'Validation failed', details: error.flatten().fieldErrors },
+        { status: 400 }
+      );
+    }
     console.error('Failed to update MCP server:', error);
     return NextResponse.json({ error: 'Failed to update MCP server' }, { status: 500 });
   }

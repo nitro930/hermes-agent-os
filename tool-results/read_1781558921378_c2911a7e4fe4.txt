@@ -1,0 +1,649 @@
+     1→'use client';
+     2→
+     3→import { useEffect, useState, useRef } from 'react';
+     4→import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
+     5→import { Button } from '@/components/ui/button';
+     6→import { Badge } from '@/components/ui/badge';
+     7→import { ScrollArea } from '@/components/ui/scroll-area';
+     8→import { Switch } from '@/components/ui/switch';
+     9→import { Label } from '@/components/ui/label';
+    10→import {
+    11→  Select,
+    12→  SelectContent,
+    13→  SelectItem,
+    14→  SelectTrigger,
+    15→  SelectValue,
+    16→} from '@/components/ui/select';
+    17→import {
+    18→  Mic,
+    19→  MicOff,
+    20→  Volume2,
+    21→  Settings,
+    22→  Pause,
+    23→  Loader2,
+    24→  AlertCircle,
+    25→} from 'lucide-react';
+    26→import { useAppStore } from '@/lib/store';
+    27→import { useToast } from '@/hooks/use-toast';
+    28→
+    29→interface Agent {
+    30→  id: string;
+    31→  name: string;
+    32→  avatar: string | null;
+    33→  systemPrompt?: string;
+    34→}
+    35→
+    36→interface TranscriptEntry {
+    37→  id: string;
+    38→  speaker: 'user' | 'agent';
+    39→  text: string;
+    40→  timestamp: Date;
+    41→  isAIGenerated?: boolean;
+    42→}
+    43→
+    44→type VoiceStatus = 'idle' | 'listening' | 'processing' | 'speaking' | 'error';
+    45→
+    46→const statusConfig: Record<VoiceStatus, { label: string; color: string; dotColor: string }> = {
+    47→  idle: { label: 'Idle', color: 'text-slate-400', dotColor: 'bg-slate-400' },
+    48→  listening: { label: 'Listening...', color: 'text-emerald-400', dotColor: 'bg-emerald-500' },
+    49→  processing: { label: 'Processing...', color: 'text-yellow-400', dotColor: 'bg-yellow-500' },
+    50→  speaking: { label: 'Speaking...', color: 'text-blue-400', dotColor: 'bg-blue-500' },
+    51→  error: { label: 'Error', color: 'text-red-400', dotColor: 'bg-red-500' },
+    52→};
+    53→
+    54→export function VoiceView() {
+    55→  const { setActiveView } = useAppStore();
+    56→  const { toast } = useToast();
+    57→  const [agents, setAgents] = useState<Agent[]>([]);
+    58→  const [selectedAgentId, setSelectedAgentId] = useState<string>('');
+    59→  const [status, setStatus] = useState<VoiceStatus>('idle');
+    60→  const [isRecording, setIsRecording] = useState(false);
+    61→  const [transcript, setTranscript] = useState<TranscriptEntry[]>([]);
+    62→  const [continuousListening, setContinuousListening] = useState(false);
+    63→  const [voiceSpeed, setVoiceSpeed] = useState('1.0');
+    64→  const [voiceType, setVoiceType] = useState('default');
+    65→  const [waveformBars, setWaveformBars] = useState<number[]>(Array(32).fill(4));
+    66→  const [sessionDuration, setSessionDuration] = useState(0);
+    67→  const [errorMessage, setErrorMessage] = useState<string>('');
+    68→  
+    69→  const recognitionRef = useRef<SpeechRecognition | null>(null);
+    70→  const sessionStartRef = useRef<Date | null>(null);
+    71→  const timerRef = useRef<NodeJS.Timeout | null>(null);
+    72→
+    73→  useEffect(() => {
+    74→    async function loadAgents() {
+    75→      try {
+    76→        const res = await fetch('/api/agents');
+    77→        if (res.ok) {
+    78→          const data = await res.json();
+    79→          setAgents(data);
+    80→          const jarvis = data.find((a: Agent) => a.name === 'Jarvis');
+    81→          if (jarvis) setSelectedAgentId(jarvis.id);
+    82→          else if (data.length > 0) setSelectedAgentId(data[0].id);
+    83→        }
+    84→      } catch (error) {
+    85→        console.error('Failed to load agents:', error);
+    86→      }
+    87→    }
+    88→    loadAgents();
+    89→  }, []);
+    90→
+    91→  // Session timer
+    92→  useEffect(() => {
+    93→    if (status !== 'idle' && !sessionStartRef.current) {
+    94→      sessionStartRef.current = new Date();
+    95→    }
+    96→    if (status !== 'idle') {
+    97→      timerRef.current = setInterval(() => {
+    98→        if (sessionStartRef.current) {
+    99→          setSessionDuration(Math.floor((Date.now() - sessionStartRef.current.getTime()) / 1000));
+   100→        }
+   101→      }, 1000);
+   102→    } else {
+   103→      if (timerRef.current) clearInterval(timerRef.current);
+   104→    }
+   105→    return () => { if (timerRef.current) clearInterval(timerRef.current); };
+   106→  }, [status]);
+   107→
+   108→  // Compute waveform bars based on recording state
+   109→  const displayBars = isRecording ? waveformBars : Array(32).fill(4);
+   110→
+   111→  // Animate waveform when recording
+   112→  useEffect(() => {
+   113→    if (!isRecording) return;
+   114→    const interval = setInterval(() => {
+   115→      setWaveformBars(Array(32).fill(0).map(() => Math.random() * 28 + 4));
+   116→    }, 100);
+   117→    return () => clearInterval(interval);
+   118→  }, [isRecording]);
+   119→
+   120→  // Get AI response for voice input
+   121→  async function getAIResponse(userText: string) {
+   122→    setStatus('processing');
+   123→    
+   124→    try {
+   125→      const res = await fetch('/api/chat', {
+   126→        method: 'POST',
+   127→        headers: { 'Content-Type': 'application/json' },
+   128→        body: JSON.stringify({
+   129→          agentId: selectedAgentId,
+   130→          message: userText,
+   131→        }),
+   132→      });
+   133→
+   134→      if (res.ok) {
+   135→        const data = await res.json();
+   136→        const responseText = data.message?.content || 'I heard you but couldn\'t process that.';
+   137→        
+   138→        const agentEntry: TranscriptEntry = {
+   139→          id: (Date.now() + 1).toString(),
+   140→          speaker: 'agent',
+   141→          text: responseText,
+   142→          timestamp: new Date(),
+   143→          isAIGenerated: true,
+   144→        };
+   145→        setTranscript((prev) => [...prev, agentEntry]);
+   146→
+   147→        // Speak the response
+   148→        setStatus('speaking');
+   149→        speakText(responseText);
+   150→      } else {
+   151→        throw new Error('Chat API failed');
+   152→      }
+   153→    } catch {
+   154→      const selectedAgent = agents.find((a) => a.id === selectedAgentId);
+   155→      const fallbackEntry: TranscriptEntry = {
+   156→        id: (Date.now() + 1).toString(),
+   157→        speaker: 'agent',
+   158→        text: `I'm ${selectedAgent?.name || 'the agent'}. I received your message but encountered a processing error. Please try again.`,
+   159→        timestamp: new Date(),
+   160→      };
+   161→      setTranscript((prev) => [...prev, fallbackEntry]);
+   162→      speakText(fallbackEntry.text);
+   163→    }
+   164→  }
+   165→
+   166→  // Text-to-speech
+   167→  function speakText(text: string) {
+   168→    if ('speechSynthesis' in window) {
+   169→      const utterance = new SpeechSynthesisUtterance(text);
+   170→      utterance.rate = parseFloat(voiceSpeed);
+   171→      
+   172→      // Try to set voice type
+   173→      const voices = speechSynthesis.getVoices();
+   174→      if (voices.length > 0) {
+   175→        const voiceMap: Record<string, string> = {
+   176→          alloy: 'Samantha',
+   177→          echo: 'Daniel',
+   178→          nova: 'Karen',
+   179→          default: '',
+   180→        };
+   181→        const targetVoice = voiceMap[voiceType];
+   182→        if (targetVoice) {
+   183→          const match = voices.find(v => v.name.includes(targetVoice));
+   184→          if (match) utterance.voice = match;
+   185→        }
+   186→      }
+   187→
+   188→      utterance.onend = () => {
+   189→        if (continuousListening) {
+   190→          startListening();
+   191→        } else {
+   192→          setStatus('idle');
+   193→          setIsRecording(false);
+   194→        }
+   195→      };
+   196→      utterance.onerror = () => {
+   197→        setStatus('idle');
+   198→        setIsRecording(false);
+   199→      };
+   200→      
+   201→      speechSynthesis.speak(utterance);
+   202→      return;
+   203→    }
+   204→
+   205→    // Fallback: just set status
+   206→    setTimeout(() => {
+   207→      if (continuousListening) {
+   208→        startListening();
+   209→      } else {
+   210→        setStatus('idle');
+   211→        setIsRecording(false);
+   212→      }
+   213→    }, 2000);
+   214→  }
+   215→
+   216→  // Start listening using Web Speech API
+   217→  function startListening() {
+   218→    const SpeechRecognitionAPI = (window as unknown as { SpeechRecognition?: typeof window.SpeechRecognition; webkitSpeechRecognition?: typeof window.SpeechRecognition }).SpeechRecognition || (window as unknown as { webkitSpeechRecognition?: typeof window.SpeechRecognition }).webkitSpeechRecognition;
+   219→    
+   220→    if (!SpeechRecognitionAPI) {
+   221→      setErrorMessage('Speech recognition is not supported in this browser. Please use Chrome or Edge.');
+   222→      setStatus('error');
+   223→      toast({ title: 'Speech recognition not supported', variant: 'destructive' });
+   224→      return;
+   225→    }
+   226→
+   227→    setErrorMessage('');
+   228→    const recognition = new SpeechRecognitionAPI();
+   229→    recognition.continuous = false;
+   230→    recognition.interimResults = false;
+   231→    recognition.lang = 'en-US';
+   232→    recognitionRef.current = recognition;
+   233→
+   234→    recognition.onstart = () => {
+   235→      setIsRecording(true);
+   236→      setStatus('listening');
+   237→    };
+   238→
+   239→    recognition.onresult = (event: SpeechRecognitionEvent) => {
+   240→      const transcript_text = event.results[0][0].transcript;
+   241→      
+   242→      const userEntry: TranscriptEntry = {
+   243→        id: Date.now().toString(),
+   244→        speaker: 'user',
+   245→        text: transcript_text,
+   246→        timestamp: new Date(),
+   247→      };
+   248→      setTranscript((prev) => [...prev, userEntry]);
+   249→      setIsRecording(false);
+   250→      
+   251→      // Get AI response
+   252→      getAIResponse(transcript_text);
+   253→    };
+   254→
+   255→    recognition.onerror = (event) => {
+   256→      console.error('Speech recognition error:', event.error);
+   257→      if (event.error === 'not-allowed') {
+   258→        setErrorMessage('Microphone access denied. Please allow microphone access in your browser settings.');
+   259→      } else if (event.error === 'no-speech') {
+   260→        setErrorMessage('No speech detected. Please try again.');
+   261→      } else {
+   262→        setErrorMessage(`Recognition error: ${event.error}`);
+   263→      }
+   264→      setStatus('idle');
+   265→      setIsRecording(false);
+   266→    };
+   267→
+   268→    recognition.onend = () => {
+   269→      if (status === 'listening') {
+   270→        setIsRecording(false);
+   271→        if (!continuousListening) {
+   272→          setStatus('idle');
+   273→        }
+   274→      }
+   275→    };
+   276→
+   277→    try {
+   278→      recognition.start();
+   279→    } catch {
+   280→      setErrorMessage('Failed to start speech recognition. Please check microphone permissions.');
+   281→      setStatus('error');
+   282→    }
+   283→  }
+   284→
+   285→  async function toggleRecording() {
+   286→    if (isRecording) {
+   287→      // Stop
+   288→      if (recognitionRef.current) {
+   289→        recognitionRef.current.stop();
+   290→      }
+   291→      setIsRecording(false);
+   292→      setStatus('idle');
+   293→      if (speechSynthesis.speaking) {
+   294→        speechSynthesis.cancel();
+   295→      }
+   296→    } else {
+   297→      startListening();
+   298→    }
+   299→  }
+   300→
+   301→  function stopSpeaking() {
+   302→    if (speechSynthesis.speaking) {
+   303→      speechSynthesis.cancel();
+   304→    }
+   305→    setStatus('idle');
+   306→    setIsRecording(false);
+   307→  }
+   308→
+   309→  const selectedAgent = agents.find((a) => a.id === selectedAgentId);
+   310→  const formatDuration = (s: number) => `${Math.floor(s / 60).toString().padStart(2, '0')}:${(s % 60).toString().padStart(2, '0')}`;
+   311→
+   312→  return (
+   313→    <div className="space-y-6">
+   314→      {/* Header */}
+   315→      <div className="flex items-center justify-between">
+   316→        <div>
+   317→          <h1 className="text-2xl font-bold">Voice</h1>
+   318→          <p className="text-sm text-muted-foreground">Talk to your agents with real voice commands</p>
+   319→        </div>
+   320→        <Badge variant="outline" className={`text-xs ${statusConfig[status].color} border-current/30`}>
+   321→          <div className={`w-1.5 h-1.5 rounded-full ${statusConfig[status].dotColor} mr-1.5 ${status === 'listening' ? 'animate-pulse' : ''}`} />
+   322→          {statusConfig[status].label}
+   323→        </Badge>
+   324→      </div>
+   325→
+   326→      {/* Error Message */}
+   327→      {errorMessage && (
+   328→        <Card className="bg-red-500/10 border-red-500/20">
+   329→          <CardContent className="p-3 flex items-center gap-2">
+   330→            <AlertCircle className="w-4 h-4 text-red-400 shrink-0" />
+   331→            <p className="text-xs text-red-400">{errorMessage}</p>
+   332→            <Button variant="ghost" size="sm" className="ml-auto text-red-400 text-xs h-6" onClick={() => setErrorMessage('')}>
+   333→              Dismiss
+   334→            </Button>
+   335→          </CardContent>
+   336→        </Card>
+   337→      )}
+   338→
+   339→      <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
+   340→        {/* Main Voice Interface */}
+   341→        <div className="lg:col-span-2 space-y-4">
+   342→          {/* Agent Selector */}
+   343→          <Card className="bg-card border-border">
+   344→            <CardContent className="p-4">
+   345→              <div className="flex items-center justify-between">
+   346→                <div className="flex items-center gap-3">
+   347→                  <div className="flex items-center justify-center w-10 h-10 rounded-lg bg-secondary text-lg">
+   348→                    {selectedAgent?.avatar || '🎙️'}
+   349→                  </div>
+   350→                  <div>
+   351→                    <p className="text-sm font-medium">Voice Agent</p>
+   352→                    <p className="text-xs text-muted-foreground">
+   353→                      {selectedAgent?.name || 'Select an agent'}
+   354→                    </p>
+   355→                  </div>
+   356→                </div>
+   357→                <Select value={selectedAgentId} onValueChange={setSelectedAgentId}>
+   358→                  <SelectTrigger className="w-40 bg-secondary border-border">
+   359→                    <SelectValue placeholder="Select agent" />
+   360→                  </SelectTrigger>
+   361→                  <SelectContent className="bg-card border-border">
+   362→                    {agents.map((agent) => (
+   363→                      <SelectItem key={agent.id} value={agent.id}>
+   364→                        {agent.avatar || '🤖'} {agent.name}
+   365→                      </SelectItem>
+   366→                    ))}
+   367→                  </SelectContent>
+   368→                </Select>
+   369→              </div>
+   370→            </CardContent>
+   371→          </Card>
+   372→
+   373→          {/* Mic Button & Waveform */}
+   374→          <Card className="bg-card border-border">
+   375→            <CardContent className="p-6">
+   376→              <div className="flex flex-col items-center gap-6">
+   377→                {/* Status */}
+   378→                <div className="text-center">
+   379→                  <p className={`text-lg font-semibold ${statusConfig[status].color}`}>
+   380→                    {statusConfig[status].label}
+   381→                  </p>
+   382→                  <p className="text-xs text-muted-foreground mt-1">
+   383→                    {isRecording ? 'Speak now...' : status === 'speaking' ? 'Agent is responding...' : status === 'processing' ? 'Thinking...' : 'Click the mic to start'}
+   384→                  </p>
+   385→                </div>
+   386→
+   387→                {/* Waveform */}
+   388→                <div className="flex items-center justify-center gap-[3px] h-16 w-full max-w-md">
+   389→                  {displayBars.map((height, i) => (
+   390→                    <div
+   391→                      key={i}
+   392→                      className={`w-1.5 rounded-full transition-all duration-100 ${
+   393→                        isRecording
+   394→                          ? status === 'speaking'
+   395→                            ? 'bg-blue-400'
+   396→                            : 'bg-emerald-400'
+   397→                          : status === 'processing'
+   398→                            ? 'bg-yellow-400/40'
+   399→                            : 'bg-muted-foreground/20'
+   400→                      }`}
+   401→                      style={{ height: `${height}px` }}
+   402→                    />
+   403→                  ))}
+   404→                </div>
+   405→
+   406→                {/* Mic Button */}
+   407→                <button
+   408→                  onClick={toggleRecording}
+   409→                  disabled={!selectedAgentId}
+   410→                  className={`relative flex items-center justify-center w-20 h-20 rounded-full transition-all duration-300 disabled:opacity-50 ${
+   411→                    isRecording
+   412→                      ? 'bg-red-500 hover:bg-red-600 shadow-lg shadow-red-500/30'
+   413→                      : status === 'processing'
+   414→                      ? 'bg-yellow-500 shadow-lg shadow-yellow-500/30'
+   415→                      : status === 'speaking'
+   416→                      ? 'bg-blue-500 shadow-lg shadow-blue-500/30'
+   417→                      : 'bg-emerald-500 hover:bg-emerald-600 shadow-lg shadow-emerald-500/30'
+   418→                  }`}
+   419→                >
+   420→                  {isRecording && (
+   421→                    <div className="absolute inset-0 rounded-full bg-red-500 animate-ping opacity-20" />
+   422→                  )}
+   423→                  {isRecording ? (
+   424→                    <Pause className="w-8 h-8 text-white" />
+   425→                  ) : status === 'processing' ? (
+   426→                    <Loader2 className="w-8 h-8 text-white animate-spin" />
+   427→                  ) : status === 'speaking' ? (
+   428→                    <Volume2 className="w-8 h-8 text-white" />
+   429→                  ) : (
+   430→                    <Mic className="w-8 h-8 text-white" />
+   431→                  )}
+   432→                </button>
+   433→
+   434→                {/* Quick Actions */}
+   435→                <div className="flex items-center gap-3">
+   436→                  <Button
+   437→                    variant="outline"
+   438→                    size="sm"
+   439→                    className="text-xs border-border"
+   440→                    onClick={() => { if (!isRecording) startListening(); }}
+   441→                    disabled={!selectedAgentId || isRecording}
+   442→                  >
+   443→                    <Mic className="w-3 h-3 mr-1" /> Push to Talk
+   444→                  </Button>
+   445→                  <Button
+   446→                    variant="outline"
+   447→                    size="sm"
+   448→                    className="text-xs border-border"
+   449→                    onClick={stopSpeaking}
+   450→                  >
+   451→                    <MicOff className="w-3 h-3 mr-1" /> Stop
+   452→                  </Button>
+   453→                  <Button
+   454→                    variant="outline"
+   455→                    size="sm"
+   456→                    className="text-xs border-emerald-500/30 text-emerald-400"
+   457→                    onClick={() => setActiveView('chat')}
+   458→                  >
+   459→                    Switch to Chat
+   460→                  </Button>
+   461→                </div>
+   462→              </div>
+   463→            </CardContent>
+   464→          </Card>
+   465→
+   466→          {/* Conversation Log */}
+   467→          <Card className="bg-card border-border">
+   468→            <CardHeader className="pb-2">
+   469→              <div className="flex items-center justify-between">
+   470→                <CardTitle className="text-sm font-semibold">Conversation Log</CardTitle>
+   471→                {transcript.length > 0 && (
+   472→                  <Button variant="ghost" size="sm" className="text-xs text-muted-foreground" onClick={() => setTranscript([])}>
+   473→                    Clear
+   474→                  </Button>
+   475→                )}
+   476→              </div>
+   477→            </CardHeader>
+   478→            <CardContent className="p-4 pt-0">
+   479→              <ScrollArea className="h-64">
+   480→                <div className="space-y-3">
+   481→                  {transcript.length === 0 ? (
+   482→                    <div className="flex flex-col items-center justify-center py-8 text-muted-foreground">
+   483→                      <Mic className="w-8 h-8 mb-2 text-emerald-500/40" />
+   484→                      <p className="text-xs">Start a voice conversation</p>
+   485→                      <p className="text-[10px] mt-1">Your conversation will appear here</p>
+   486→                    </div>
+   487→                  ) : (
+   488→                    transcript.map((entry) => (
+   489→                      <div key={entry.id} className="flex gap-2.5">
+   490→                        <div className={`mt-0.5 shrink-0 ${entry.speaker === 'user' ? 'text-emerald-400' : 'text-blue-400'}`}>
+   491→                          {entry.speaker === 'user' ? (
+   492→                            <Mic className="w-3.5 h-3.5" />
+   493→                          ) : (
+   494→                            <Volume2 className="w-3.5 h-3.5" />
+   495→                          )}
+   496→                        </div>
+   497→                        <div className="flex-1 min-w-0">
+   498→                          <div className="flex items-center gap-2">
+   499→                            <span className="text-xs font-medium">
+   500→                              {entry.speaker === 'user' ? 'You' : selectedAgent?.name || 'Agent'}
+   501→                            </span>
+   502→                            <span className="text-[10px] text-muted-foreground">
+   503→                              {entry.timestamp.toLocaleTimeString()}
+   504→                            </span>
+   505→                            {entry.isAIGenerated && (
+   506→                              <Badge variant="outline" className="text-[8px] bg-blue-500/10 text-blue-400 border-blue-500/20 h-4">
+   507→                                AI
+   508→                              </Badge>
+   509→                            )}
+   510→                          </div>
+   511→                          <p className="text-xs text-foreground/80 mt-0.5">{entry.text}</p>
+   512→                        </div>
+   513→                      </div>
+   514→                    ))
+   515→                  )}
+   516→                </div>
+   517→              </ScrollArea>
+   518→            </CardContent>
+   519→          </Card>
+   520→        </div>
+   521→
+   522→        {/* Settings Panel */}
+   523→        <div className="space-y-4">
+   524→          <Card className="bg-card border-border">
+   525→            <CardHeader className="pb-2">
+   526→              <div className="flex items-center gap-2">
+   527→                <Settings className="w-4 h-4 text-muted-foreground" />
+   528→                <CardTitle className="text-sm font-semibold">Voice Settings</CardTitle>
+   529→              </div>
+   530→            </CardHeader>
+   531→            <CardContent className="p-4 pt-0 space-y-4">
+   532→              <div className="flex items-center justify-between">
+   533→                <Label className="text-xs">Continuous Listening</Label>
+   534→                <Switch
+   535→                  checked={continuousListening}
+   536→                  onCheckedChange={setContinuousListening}
+   537→                />
+   538→              </div>
+   539→              <div className="space-y-2">
+   540→                <Label className="text-xs">Voice Speed</Label>
+   541→                <Select value={voiceSpeed} onValueChange={setVoiceSpeed}>
+   542→                  <SelectTrigger className="bg-secondary border-border">
+   543→                    <SelectValue />
+   544→                  </SelectTrigger>
+   545→                  <SelectContent className="bg-card border-border">
+   546→                    <SelectItem value="0.5">0.5x (Slow)</SelectItem>
+   547→                    <SelectItem value="0.75">0.75x</SelectItem>
+   548→                    <SelectItem value="1.0">1.0x (Normal)</SelectItem>
+   549→                    <SelectItem value="1.25">1.25x</SelectItem>
+   550→                    <SelectItem value="1.5">1.5x (Fast)</SelectItem>
+   551→                  </SelectContent>
+   552→                </Select>
+   553→              </div>
+   554→              <div className="space-y-2">
+   555→                <Label className="text-xs">Voice Type</Label>
+   556→                <Select value={voiceType} onValueChange={setVoiceType}>
+   557→                  <SelectTrigger className="bg-secondary border-border">
+   558→                    <SelectValue />
+   559→                  </SelectTrigger>
+   560→                  <SelectContent className="bg-card border-border">
+   561→                    <SelectItem value="default">Default</SelectItem>
+   562→                    <SelectItem value="alloy">Alloy</SelectItem>
+   563→                    <SelectItem value="echo">Echo</SelectItem>
+   564→                    <SelectItem value="nova">Nova</SelectItem>
+   565→                  </SelectContent>
+   566→                </Select>
+   567→              </div>
+   568→            </CardContent>
+   569→          </Card>
+   570→
+   571→          {/* Voice Status */}
+   572→          <Card className="bg-card border-border">
+   573→            <CardHeader className="pb-2">
+   574→              <CardTitle className="text-sm font-semibold">System Status</CardTitle>
+   575→            </CardHeader>
+   576→            <CardContent className="p-4 pt-0 space-y-3">
+   577→              <div className="flex items-center justify-between">
+   578→                <span className="text-xs text-muted-foreground">Microphone</span>
+   579→                <div className="flex items-center gap-1.5">
+   580→                  <div className={`w-1.5 h-1.5 rounded-full ${isRecording ? 'bg-emerald-500' : 'bg-slate-500'}`} />
+   581→                  <span className="text-[10px] text-muted-foreground">{isRecording ? 'Active' : 'Inactive'}</span>
+   582→                </div>
+   583→              </div>
+   584→              <div className="flex items-center justify-between">
+   585→                <span className="text-xs text-muted-foreground">Agent Connected</span>
+   586→                <div className="flex items-center gap-1.5">
+   587→                  <div className={`w-1.5 h-1.5 rounded-full ${selectedAgentId ? 'bg-emerald-500' : 'bg-slate-500'}`} />
+   588→                  <span className="text-[10px] text-muted-foreground">{selectedAgentId ? 'Yes' : 'No'}</span>
+   589→                </div>
+   590→              </div>
+   591→              <div className="flex items-center justify-between">
+   592→                <span className="text-xs text-muted-foreground">Speech Engine</span>
+   593→                <span className="text-[10px] text-emerald-400">Web Speech API</span>
+   594→              </div>
+   595→              <div className="flex items-center justify-between">
+   596→                <span className="text-xs text-muted-foreground">TTS Engine</span>
+   597→                <span className="text-[10px] text-emerald-400">Browser Native</span>
+   598→              </div>
+   599→              <div className="flex items-center justify-between">
+   600→                <span className="text-xs text-muted-foreground">Session Duration</span>
+   601→                <span className="text-[10px] text-muted-foreground">{formatDuration(sessionDuration)}</span>
+   602→              </div>
+   603→              <div className="flex items-center justify-between">
+   604→                <span className="text-xs text-muted-foreground">Messages</span>
+   605→                <span className="text-[10px] text-muted-foreground">{transcript.length}</span>
+   606→              </div>
+   607→            </CardContent>
+   608→          </Card>
+   609→
+   610→          {/* Supported Commands */}
+   611→          <Card className="bg-card border-border">
+   612→            <CardHeader className="pb-2">
+   613→              <CardTitle className="text-sm font-semibold">Voice Commands</CardTitle>
+   614→            </CardHeader>
+   615→            <CardContent className="p-4 pt-0 space-y-2">
+   616→              {[
+   617→                'What are my current tasks?',
+   618→                'Status of [agent name]',
+   619→                'Create a task: [description]',
+   620→                'What are the team goals?',
+   621→                'Summarize recent activity',
+   622→                'Delegate [task] to [agent]',
+   623→              ].map((cmd) => (
+   624→                <button
+   625→                  key={cmd}
+   626→                  className="w-full text-left p-2 rounded-lg bg-secondary/50 text-xs text-muted-foreground hover:text-foreground hover:bg-secondary transition-colors"
+   627→                  onClick={() => {
+   628→                    if (!isRecording && selectedAgentId) {
+   629→                      setTranscript(prev => [...prev, {
+   630→                        id: Date.now().toString(),
+   631→                        speaker: 'user' as const,
+   632→                        text: cmd,
+   633→                        timestamp: new Date(),
+   634→                      }]);
+   635→                      getAIResponse(cmd);
+   636→                    }
+   637→                  }}
+   638→                >
+   639→                  &quot;{cmd}&quot;
+   640→                </button>
+   641→              ))}
+   642→            </CardContent>
+   643→          </Card>
+   644→        </div>
+   645→      </div>
+   646→    </div>
+   647→  );
+   648→}
+   649→

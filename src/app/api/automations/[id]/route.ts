@@ -1,4 +1,6 @@
 import { db } from '@/lib/db';
+import { updateAutomationSchema } from '@/lib/validations';
+import { ZodError } from 'zod';
 import { NextRequest, NextResponse } from 'next/server';
 
 export async function PATCH(
@@ -8,15 +10,25 @@ export async function PATCH(
   try {
     const { id } = await params;
     const body = await request.json();
-    if (body.config && typeof body.config !== 'string') {
-      body.config = JSON.stringify(body.config);
+    const data = updateAutomationSchema.parse(body);
+
+    const updateData: Record<string, unknown> = { ...data };
+    if (data.config && typeof data.config !== 'string') {
+      updateData.config = JSON.stringify(data.config);
     }
+
     const automation = await db.automation.update({
       where: { id },
-      data: body,
+      data: updateData,
     });
     return NextResponse.json(automation);
   } catch (error) {
+    if (error instanceof ZodError) {
+      return NextResponse.json(
+        { error: 'Validation failed', details: error.flatten().fieldErrors },
+        { status: 400 }
+      );
+    }
     console.error('Failed to update automation:', error);
     return NextResponse.json({ error: 'Failed to update automation' }, { status: 500 });
   }

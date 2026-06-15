@@ -1,0 +1,43 @@
+version: "3.9"
+
+services:
+  hermes-agent-os:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    container_name: hermes-agent-os
+    restart: unless-stopped
+    ports:
+      - "${PORT:-3000}:3000"
+    environment:
+      - NODE_ENV=production
+      - DATABASE_URL=${DATABASE_URL:-file:./db/production.db}
+      - ADMIN_SECRET=${ADMIN_SECRET:-}
+      - PORT=3000
+      - HOSTNAME=0.0.0.0
+    volumes:
+      # Persist SQLite database across container restarts
+      - hermes-db:/app/prisma/db
+    healthcheck:
+      test: ["CMD", "wget", "--no-verbose", "--tries=1", "--spider", "http://localhost:3000/api/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 15s
+    deploy:
+      resources:
+        limits:
+          memory: 1024M
+          cpus: "2.0"
+        reservations:
+          memory: 256M
+          cpus: "0.5"
+    logging:
+      driver: json-file
+      options:
+        max-size: "10m"
+        max-file: "3"
+
+volumes:
+  hermes-db:
+    driver: local

@@ -39,6 +39,11 @@ import {
   X,
   Eye,
   Edit3,
+  Columns2,
+  PanelLeft,
+  PanelRight,
+  Clock,
+  User,
 } from 'lucide-react';
 import { useToast } from '@/hooks/use-toast';
 import { useAppStore } from '@/lib/store';
@@ -55,6 +60,7 @@ interface Memory {
   agentId: string | null;
   agent?: { name: string } | null;
   updatedAt: string;
+  createdAt: string;
 }
 
 const folders = [
@@ -72,6 +78,8 @@ const typeColors: Record<string, string> = {
   log: 'bg-yellow-500/20 text-yellow-400',
 };
 
+type EditorMode = 'edit' | 'preview' | 'split';
+
 export function MemoryView() {
   const { selectedFolder, setSelectedFolder, selectedMemoryId, setSelectedMemoryId } = useAppStore();
   const { toast } = useToast();
@@ -80,7 +88,7 @@ export function MemoryView() {
   const [searchQuery, setSearchQuery] = useState('');
   const [loading, setLoading] = useState(true);
   const [createOpen, setCreateOpen] = useState(false);
-  const [editMode, setEditMode] = useState(false);
+  const [editorMode, setEditorMode] = useState<EditorMode>('preview');
   const [editContent, setEditContent] = useState({ title: '', content: '', tags: '', type: 'note', folder: 'General' });
   const [newMemory, setNewMemory] = useState({
     title: '',
@@ -89,6 +97,7 @@ export function MemoryView() {
     tags: '',
     folder: 'General',
   });
+  const [hasUnsavedChanges, setHasUnsavedChanges] = useState(false);
 
   const loadMemories = useCallback(async () => {
     try {
@@ -120,14 +129,18 @@ export function MemoryView() {
           type: mem.type,
           folder: mem.folder,
         });
+        setHasUnsavedChanges(false);
       }
     }
   }, [selectedMemoryId, memories]);
 
   function selectMemory(mem: Memory) {
+    if (hasUnsavedChanges) {
+      if (!window.confirm('You have unsaved changes. Discard them?')) return;
+    }
     setSelectedMemory(mem);
     setSelectedMemoryId(mem.id);
-    setEditMode(false);
+    setEditorMode('preview');
     setEditContent({
       title: mem.title,
       content: mem.content,
@@ -135,6 +148,7 @@ export function MemoryView() {
       type: mem.type,
       folder: mem.folder,
     });
+    setHasUnsavedChanges(false);
   }
 
   async function createMemory() {
@@ -171,7 +185,7 @@ export function MemoryView() {
       });
       if (res.ok) {
         toast({ title: 'Memory updated' });
-        setEditMode(false);
+        setHasUnsavedChanges(false);
         loadMemories();
         const updated = await res.json();
         setSelectedMemory(updated);
@@ -207,6 +221,7 @@ export function MemoryView() {
         if (selectedMemory?.id === id) {
           setSelectedMemory(null);
           setSelectedMemoryId(null);
+          setEditorMode('preview');
         }
         loadMemories();
       }
@@ -215,6 +230,20 @@ export function MemoryView() {
     }
   }
 
+  // Keyboard shortcut: Ctrl/Cmd+S to save
+  useEffect(() => {
+    function handleKeyDown(e: KeyboardEvent) {
+      if ((e.metaKey || e.ctrlKey) && e.key === 's') {
+        e.preventDefault();
+        if (hasUnsavedChanges && selectedMemory) {
+          updateMemory();
+        }
+      }
+    }
+    document.addEventListener('keydown', handleKeyDown);
+    return () => document.removeEventListener('keydown', handleKeyDown);
+  });
+
   if (loading) {
     return (
       <div className="flex items-center justify-center h-full">
@@ -222,6 +251,29 @@ export function MemoryView() {
       </div>
     );
   }
+
+  const markdownComponents = {
+    h1: ({ children }: React.HTMLAttributes<HTMLHeadingElement>) => <h1 className="text-lg font-bold text-foreground mb-2">{children}</h1>,
+    h2: ({ children }: React.HTMLAttributes<HTMLHeadingElement>) => <h2 className="text-base font-semibold text-foreground mb-1.5">{children}</h2>,
+    h3: ({ children }: React.HTMLAttributes<HTMLHeadingElement>) => <h3 className="text-sm font-medium text-foreground mb-1">{children}</h3>,
+    p: ({ children }: React.HTMLAttributes<HTMLParagraphElement>) => <p className="text-sm text-foreground/90 mb-2 leading-relaxed">{children}</p>,
+    ul: ({ children }: React.HTMLAttributes<HTMLUListElement>) => <ul className="text-sm text-foreground/90 mb-2 list-disc pl-4 space-y-1">{children}</ul>,
+    ol: ({ children }: React.HTMLAttributes<HTMLOListElement>) => <ol className="text-sm text-foreground/90 mb-2 list-decimal pl-4 space-y-1">{children}</ol>,
+    li: ({ children }: React.HTMLAttributes<HTMLLIElement>) => <li className="text-sm">{children}</li>,
+    code: ({ children, className }: React.HTMLAttributes<HTMLElement> & { className?: string }) => {
+      const isBlock = className?.includes('language-');
+      if (isBlock) return <code className="block bg-secondary p-3 rounded-lg mb-2 overflow-x-auto text-emerald-400 text-xs font-mono">{children}</code>;
+      return <code className="bg-secondary px-1.5 py-0.5 rounded text-emerald-400 text-xs font-mono">{children}</code>;
+    },
+    pre: ({ children }: React.HTMLAttributes<HTMLPreElement>) => <pre className="bg-secondary p-3 rounded-lg mb-2 overflow-x-auto">{children}</pre>,
+    blockquote: ({ children }: React.HTMLAttributes<HTMLQuoteElement>) => <blockquote className="border-l-2 border-emerald-500 pl-3 italic text-muted-foreground mb-2">{children}</blockquote>,
+    a: ({ children, href }: React.AnchorHTMLAttributes<HTMLAnchorElement>) => <a href={href} className="text-emerald-400 hover:underline" target="_blank" rel="noopener noreferrer">{children}</a>,
+    strong: ({ children }: React.HTMLAttributes<HTMLElement>) => <strong className="font-semibold text-foreground">{children}</strong>,
+    em: ({ children }: React.HTMLAttributes<HTMLElement>) => <em className="italic text-foreground/80">{children}</em>,
+    table: ({ children }: React.HTMLAttributes<HTMLTableElement>) => <table className="w-full text-sm border border-border mb-2">{children}</table>,
+    th: ({ children }: React.HTMLAttributes<HTMLTableCellElement>) => <th className="border border-border px-2 py-1 bg-secondary text-left text-xs font-medium">{children}</th>,
+    td: ({ children }: React.HTMLAttributes<HTMLTableCellElement>) => <td className="border border-border px-2 py-1 text-xs">{children}</td>,
+  };
 
   return (
     <div className="space-y-6">
@@ -326,18 +378,24 @@ export function MemoryView() {
               {folders.map((folder) => {
                 const Icon = folder.icon;
                 const isActive = selectedFolder === folder.name;
+                const count = memories.filter(m => m.folder === folder.name).length;
                 return (
                   <button
                     key={folder.name}
                     onClick={() => setSelectedFolder(folder.name)}
-                    className={`flex items-center gap-2 w-full px-3 py-2 rounded-lg text-xs transition-colors ${
+                    className={`flex items-center justify-between w-full px-3 py-2 rounded-lg text-xs transition-colors ${
                       isActive
                         ? 'bg-emerald-500/15 text-emerald-400'
                         : 'text-muted-foreground hover:text-foreground hover:bg-accent'
                     }`}
                   >
-                    <Icon className="w-3.5 h-3.5" />
-                    {folder.name}
+                    <div className="flex items-center gap-2">
+                      <Icon className="w-3.5 h-3.5" />
+                      {folder.name}
+                    </div>
+                    {count > 0 && (
+                      <span className="text-[9px] opacity-60">{count}</span>
+                    )}
                   </button>
                 );
               })}
@@ -402,24 +460,77 @@ export function MemoryView() {
           </ScrollArea>
         </Card>
 
-        {/* Note Editor */}
+        {/* Note Editor / Preview */}
         <Card className="flex-1 bg-card border-border flex flex-col">
           {selectedMemory ? (
             <>
+              {/* Toolbar */}
               <div className="flex items-center justify-between p-3 border-b border-border">
                 <div className="flex items-center gap-2">
                   <FileText className="w-4 h-4 text-emerald-400" />
-                  {editMode ? (
+                  {editorMode !== 'preview' ? (
                     <Input
                       value={editContent.title}
-                      onChange={(e) => setEditContent({ ...editContent, title: e.target.value })}
-                      className="bg-secondary border-border text-sm h-7"
+                      onChange={(e) => {
+                        setEditContent({ ...editContent, title: e.target.value });
+                        setHasUnsavedChanges(true);
+                      }}
+                      className="bg-secondary border-border text-sm h-7 max-w-64"
                     />
                   ) : (
                     <span className="text-sm font-medium">{selectedMemory.title}</span>
                   )}
+                  {hasUnsavedChanges && (
+                    <Badge variant="outline" className="text-[9px] border-orange-500/30 text-orange-400">
+                      Unsaved
+                    </Badge>
+                  )}
                 </div>
                 <div className="flex items-center gap-1.5">
+                  {/* Editor Mode Toggles */}
+                  <div className="flex items-center bg-secondary rounded-lg p-0.5 mr-2">
+                    <Button
+                      variant="ghost"
+                      size="sm"
+                      className={`h-6 px-2 text-[10px] ${editorMode === 'edit' ? 'bg-card shadow-sm text-emerald-400' : 'text-muted-foreground'}`}
+                      onClick={() => setEditorMode('edit')}
+                      title="Edit mode"
+                    >
+                      <Edit3 className="w-3 h-3" />
+                    </Button>
+                    <Button
+                      variant="ghost"
+                      size="sm"
+                      className={`h-6 px-2 text-[10px] ${editorMode === 'split' ? 'bg-card shadow-sm text-emerald-400' : 'text-muted-foreground'}`}
+                      onClick={() => setEditorMode('split')}
+                      title="Split mode"
+                    >
+                      <Columns2 className="w-3 h-3" />
+                    </Button>
+                    <Button
+                      variant="ghost"
+                      size="sm"
+                      className={`h-6 px-2 text-[10px] ${editorMode === 'preview' ? 'bg-card shadow-sm text-emerald-400' : 'text-muted-foreground'}`}
+                      onClick={() => {
+                        if (hasUnsavedChanges) {
+                          if (!window.confirm('You have unsaved changes. Discard them?')) return;
+                          setEditContent({
+                            title: selectedMemory.title,
+                            content: selectedMemory.content,
+                            tags: selectedMemory.tags || '',
+                            type: selectedMemory.type,
+                            folder: selectedMemory.folder,
+                          });
+                          setHasUnsavedChanges(false);
+                        }
+                        setEditorMode('preview');
+                      }}
+                      title="Preview mode"
+                    >
+                      <Eye className="w-3 h-3" />
+                    </Button>
+                  </div>
+
                   <Button variant="ghost" size="icon" className="w-7 h-7" onClick={togglePin}>
                     {selectedMemory.isPinned ? (
                       <PinOff className="w-3.5 h-3.5 text-emerald-400" />
@@ -427,23 +538,15 @@ export function MemoryView() {
                       <Pin className="w-3.5 h-3.5" />
                     )}
                   </Button>
-                  {editMode ? (
-                    <>
-                      <Button variant="ghost" size="icon" className="w-7 h-7" onClick={() => setEditMode(false)}>
-                        <X className="w-3.5 h-3.5" />
-                      </Button>
-                      <Button
-                        variant="ghost"
-                        size="icon"
-                        className="w-7 h-7 text-emerald-400"
-                        onClick={updateMemory}
-                      >
-                        <Save className="w-3.5 h-3.5" />
-                      </Button>
-                    </>
-                  ) : (
-                    <Button variant="ghost" size="icon" className="w-7 h-7" onClick={() => setEditMode(true)}>
-                      <FileText className="w-3.5 h-3.5" />
+                  {hasUnsavedChanges && (
+                    <Button
+                      variant="ghost"
+                      size="icon"
+                      className="w-7 h-7 text-emerald-400"
+                      onClick={updateMemory}
+                      title="Save (Ctrl+S)"
+                    >
+                      <Save className="w-3.5 h-3.5" />
                     </Button>
                   )}
                   <Button
@@ -456,38 +559,17 @@ export function MemoryView() {
                   </Button>
                 </div>
               </div>
-              <ScrollArea className="flex-1 p-4">
-                {editMode ? (
-                  <div className="space-y-4">
-                    <div className="grid grid-cols-2 gap-2">
-                      <Button
-                        variant={editMode ? 'default' : 'ghost'}
-                        size="sm"
-                        className={`text-xs h-7 ${editMode ? 'bg-emerald-600' : ''}`}
-                        onClick={() => setEditMode(true)}
-                      >
-                        <Edit3 className="w-3 h-3 mr-1" /> Edit
-                      </Button>
-                      <Button
-                        variant="ghost"
-                        size="sm"
-                        className="text-xs h-7"
-                        onClick={() => setEditMode(false)}
-                      >
-                        <Eye className="w-3 h-3 mr-1" /> Preview
-                      </Button>
-                    </div>
-                    <Textarea
-                      value={editContent.content}
-                      onChange={(e) => setEditContent({ ...editContent, content: e.target.value })}
-                      className="bg-secondary border-border min-h-64 font-mono text-sm"
-                      placeholder="Write content here... (Markdown supported)"
-                    />
-                    <div className="grid grid-cols-2 gap-4">
-                      <div className="space-y-1">
-                        <Label className="text-xs">Type</Label>
-                        <Select value={editContent.type} onValueChange={(v) => setEditContent({ ...editContent, type: v })}>
-                          <SelectTrigger className="bg-secondary border-border text-xs h-8">
+
+              {/* Editor Content */}
+              <div className="flex-1 flex overflow-hidden">
+                {editorMode === 'edit' && (
+                  <div className="flex-1 flex flex-col overflow-hidden">
+                    {/* Metadata bar */}
+                    <div className="flex items-center gap-4 px-4 py-2 border-b border-border bg-secondary/30">
+                      <div className="flex items-center gap-1.5">
+                        <Label className="text-[10px] text-muted-foreground">Type</Label>
+                        <Select value={editContent.type} onValueChange={(v) => { setEditContent({ ...editContent, type: v }); setHasUnsavedChanges(true); }}>
+                          <SelectTrigger className="bg-secondary border-border text-xs h-6 w-24">
                             <SelectValue />
                           </SelectTrigger>
                           <SelectContent className="bg-card border-border">
@@ -498,40 +580,102 @@ export function MemoryView() {
                           </SelectContent>
                         </Select>
                       </div>
-                      <div className="space-y-1">
-                        <Label className="text-xs">Tags</Label>
+                      <div className="flex items-center gap-1.5">
+                        <Label className="text-[10px] text-muted-foreground">Tags</Label>
                         <Input
                           value={editContent.tags}
-                          onChange={(e) => setEditContent({ ...editContent, tags: e.target.value })}
-                          className="bg-secondary border-border text-xs h-8"
+                          onChange={(e) => { setEditContent({ ...editContent, tags: e.target.value }); setHasUnsavedChanges(true); }}
+                          className="bg-secondary border-border text-xs h-6 w-40"
+                          placeholder="api, design..."
                         />
                       </div>
+                      <div className="flex items-center gap-1.5">
+                        <Label className="text-[10px] text-muted-foreground">Folder</Label>
+                        <Select value={editContent.folder} onValueChange={(v) => { setEditContent({ ...editContent, folder: v }); setHasUnsavedChanges(true); }}>
+                          <SelectTrigger className="bg-secondary border-border text-xs h-6 w-24">
+                            <SelectValue />
+                          </SelectTrigger>
+                          <SelectContent className="bg-card border-border">
+                            {folders.map((f) => (
+                              <SelectItem key={f.name} value={f.name}>{f.name}</SelectItem>
+                            ))}
+                          </SelectContent>
+                        </Select>
+                      </div>
                     </div>
-                  </div>
-                ) : (
-                  <div className="prose prose-invert prose-sm max-w-none">
-                    <ReactMarkdown
-                      components={{
-                        h1: ({ children }) => <h1 className="text-lg font-bold text-foreground mb-2">{children}</h1>,
-                        h2: ({ children }) => <h2 className="text-base font-semibold text-foreground mb-1.5">{children}</h2>,
-                        h3: ({ children }) => <h3 className="text-sm font-medium text-foreground mb-1">{children}</h3>,
-                        p: ({ children }) => <p className="text-sm text-foreground/90 mb-2 leading-relaxed">{children}</p>,
-                        ul: ({ children }) => <ul className="text-sm text-foreground/90 mb-2 list-disc pl-4 space-y-1">{children}</ul>,
-                        ol: ({ children }) => <ol className="text-sm text-foreground/90 mb-2 list-decimal pl-4 space-y-1">{children}</ol>,
-                        li: ({ children }) => <li className="text-sm">{children}</li>,
-                        code: ({ children }) => <code className="bg-secondary px-1.5 py-0.5 rounded text-emerald-400 text-xs font-mono">{children}</code>,
-                        pre: ({ children }) => <pre className="bg-secondary p-3 rounded-lg mb-2 overflow-x-auto">{children}</pre>,
-                        blockquote: ({ children }) => <blockquote className="border-l-2 border-emerald-500 pl-3 italic text-muted-foreground mb-2">{children}</blockquote>,
-                        a: ({ children, href }) => <a href={href} className="text-emerald-400 hover:underline" target="_blank" rel="noopener noreferrer">{children}</a>,
-                        strong: ({ children }) => <strong className="font-semibold text-foreground">{children}</strong>,
-                        em: ({ children }) => <em className="italic text-foreground/80">{children}</em>,
-                      }}
-                    >
-                      {selectedMemory.content}
-                    </ReactMarkdown>
+                    <Textarea
+                      value={editContent.content}
+                      onChange={(e) => { setEditContent({ ...editContent, content: e.target.value }); setHasUnsavedChanges(true); }}
+                      className="flex-1 bg-transparent border-0 font-mono text-sm resize-none focus-visible:ring-0 p-4 rounded-none"
+                      placeholder="Write content here... (Markdown supported)"
+                    />
                   </div>
                 )}
-              </ScrollArea>
+
+                {editorMode === 'split' && (
+                  <>
+                    {/* Left: Editor */}
+                    <div className="w-1/2 flex flex-col border-r border-border overflow-hidden">
+                      <div className="flex items-center gap-1 px-3 py-1.5 border-b border-border bg-secondary/30">
+                        <Edit3 className="w-3 h-3 text-muted-foreground" />
+                        <span className="text-[10px] text-muted-foreground">Editor</span>
+                        <span className="ml-auto text-[9px] text-muted-foreground">{editContent.content.length} chars</span>
+                      </div>
+                      <div className="flex items-center gap-3 px-3 py-1.5 border-b border-border bg-secondary/20">
+                        <Select value={editContent.type} onValueChange={(v) => { setEditContent({ ...editContent, type: v }); setHasUnsavedChanges(true); }}>
+                          <SelectTrigger className="bg-secondary border-border text-[10px] h-5 w-20">
+                            <SelectValue />
+                          </SelectTrigger>
+                          <SelectContent className="bg-card border-border">
+                            <SelectItem value="note">Note</SelectItem>
+                            <SelectItem value="document">Document</SelectItem>
+                            <SelectItem value="reference">Reference</SelectItem>
+                            <SelectItem value="log">Log</SelectItem>
+                          </SelectContent>
+                        </Select>
+                        <Input
+                          value={editContent.tags}
+                          onChange={(e) => { setEditContent({ ...editContent, tags: e.target.value }); setHasUnsavedChanges(true); }}
+                          className="bg-secondary border-border text-[10px] h-5 flex-1"
+                          placeholder="Tags..."
+                        />
+                      </div>
+                      <Textarea
+                        value={editContent.content}
+                        onChange={(e) => { setEditContent({ ...editContent, content: e.target.value }); setHasUnsavedChanges(true); }}
+                        className="flex-1 bg-transparent border-0 font-mono text-xs resize-none focus-visible:ring-0 p-4 rounded-none"
+                        placeholder="Write content here... (Markdown supported)"
+                      />
+                    </div>
+                    {/* Right: Live Preview */}
+                    <div className="w-1/2 flex flex-col overflow-hidden">
+                      <div className="flex items-center gap-1 px-3 py-1.5 border-b border-border bg-secondary/30">
+                        <Eye className="w-3 h-3 text-muted-foreground" />
+                        <span className="text-[10px] text-muted-foreground">Preview</span>
+                      </div>
+                      <ScrollArea className="flex-1 p-4">
+                        <div className="prose prose-invert prose-sm max-w-none">
+                          <ReactMarkdown components={markdownComponents}>
+                            {editContent.content}
+                          </ReactMarkdown>
+                        </div>
+                      </ScrollArea>
+                    </div>
+                  </>
+                )}
+
+                {editorMode === 'preview' && (
+                  <ScrollArea className="flex-1 p-4">
+                    <div className="prose prose-invert prose-sm max-w-none">
+                      <ReactMarkdown components={markdownComponents}>
+                        {selectedMemory.content}
+                      </ReactMarkdown>
+                    </div>
+                  </ScrollArea>
+                )}
+              </div>
+
+              {/* Footer */}
               <div className="p-3 border-t border-border flex items-center justify-between">
                 <div className="flex items-center gap-2">
                   <Badge variant="outline" className={`text-[10px] ${typeColors[selectedMemory.type] || ''}`}>
@@ -546,9 +690,18 @@ export function MemoryView() {
                     </Badge>
                   ))}
                 </div>
-                <span className="text-[10px] text-muted-foreground">
-                  Updated {new Date(selectedMemory.updatedAt).toLocaleDateString()}
-                </span>
+                <div className="flex items-center gap-3 text-[10px] text-muted-foreground">
+                  {selectedMemory.agent && (
+                    <div className="flex items-center gap-1">
+                      <User className="w-3 h-3" />
+                      {selectedMemory.agent.name}
+                    </div>
+                  )}
+                  <div className="flex items-center gap-1">
+                    <Clock className="w-3 h-3" />
+                    Updated {new Date(selectedMemory.updatedAt).toLocaleDateString()}
+                  </div>
+                </div>
               </div>
             </>
           ) : (
@@ -556,6 +709,7 @@ export function MemoryView() {
               <FileText className="w-12 h-12 mb-3 text-emerald-500/40" />
               <p className="text-sm">Select a memory entry to view</p>
               <p className="text-xs mt-1">Or create a new one</p>
+              <p className="text-[10px] mt-4 text-muted-foreground/60">Tip: Use Edit, Split, or Preview mode to switch views</p>
             </div>
           )}
         </Card>

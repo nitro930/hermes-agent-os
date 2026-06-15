@@ -1,7 +1,7 @@
 'use client';
 
-import { useEffect, useState } from 'react';
-import { useAppStore } from '@/lib/store';
+import { useEffect, useState, useCallback } from 'react';
+import { useAppStore, VALID_VIEWS, ActiveView } from '@/lib/store';
 import { Sidebar } from '@/components/agent-os/sidebar';
 import { Dashboard } from '@/components/agent-os/dashboard';
 import { AgentsView } from '@/components/agent-os/agents-view';
@@ -14,6 +14,7 @@ import { SkillsView } from '@/components/agent-os/skills-view';
 import { GoalsView } from '@/components/agent-os/goals-view';
 import { VoiceView } from '@/components/agent-os/voice-view';
 import { McpView } from '@/components/agent-os/mcp-view';
+import { DevView } from '@/components/agent-os/dev-view';
 import { ErrorBoundary } from '@/components/agent-os/error-boundary';
 import { CommandPalette } from '@/components/agent-os/command-palette';
 import { useNotifications } from '@/hooks/use-notifications';
@@ -44,6 +45,8 @@ function ViewRenderer() {
       return <VoiceView />;
     case 'mcp':
       return <McpView />;
+    case 'dev':
+      return <DevView />;
     default:
       return <Dashboard />;
   }
@@ -51,8 +54,10 @@ function ViewRenderer() {
 
 export default function Home() {
   const [seeded, setSeeded] = useState(false);
+  const { setActiveView, activeView } = useAppStore();
   useNotifications(); // Enable real-time notifications
 
+  // Seed database on first load
   useEffect(() => {
     async function seedData() {
       try {
@@ -71,6 +76,25 @@ export default function Home() {
     }
     seedData();
   }, []);
+
+  // Handle browser back/forward via popstate (hash changes)
+  const handlePopState = useCallback(() => {
+    const hash = window.location.hash.replace('#', '');
+    if (VALID_VIEWS.includes(hash as ActiveView)) {
+      setActiveView(hash as ActiveView);
+    } else {
+      setActiveView('dashboard');
+    }
+  }, [setActiveView]);
+
+  useEffect(() => {
+    window.addEventListener('popstate', handlePopState);
+    // Set initial hash if not already set
+    if (!window.location.hash) {
+      window.history.replaceState(null, '', `#${activeView}`);
+    }
+    return () => window.removeEventListener('popstate', handlePopState);
+  }, [handlePopState, activeView]);
 
   if (!seeded) {
     return (

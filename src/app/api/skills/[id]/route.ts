@@ -1,4 +1,6 @@
 import { db } from '@/lib/db';
+import { updateSkillSchema } from '@/lib/validations';
+import { ZodError } from 'zod';
 import { NextRequest, NextResponse } from 'next/server';
 
 export async function PATCH(
@@ -8,13 +10,21 @@ export async function PATCH(
   try {
     const { id } = await params;
     const body = await request.json();
+    const data = updateSkillSchema.parse(body);
+
     const skill = await db.skill.update({
       where: { id },
-      data: body,
+      data,
       include: { agent: { select: { id: true, name: true, avatar: true } } },
     });
     return NextResponse.json(skill);
   } catch (error) {
+    if (error instanceof ZodError) {
+      return NextResponse.json(
+        { error: 'Validation failed', details: error.flatten().fieldErrors },
+        { status: 400 }
+      );
+    }
     console.error('Failed to update skill:', error);
     return NextResponse.json({ error: 'Failed to update skill' }, { status: 500 });
   }

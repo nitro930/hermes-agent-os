@@ -13,11 +13,13 @@ export async function POST(request: NextRequest) {
       const ZAI = (await import('z-ai-web-dev-sdk')).default;
       const zai = await ZAI.create();
       
-      const result = await zai.tts.synthesize({
+      // Use functions.invoke for TTS since the SDK doesn't have typed TTS method
+      const zaiAny = zai as unknown as { functions: { invoke: (fn: string, params: Record<string, unknown>) => Promise<unknown> } };
+      const result = await zaiAny.functions.invoke('tts', {
         text,
         voice,
         speed,
-      });
+      }) as { audio?: string; base64?: string };
 
       // Return audio data as base64
       return NextResponse.json({

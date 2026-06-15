@@ -1,4 +1,6 @@
 import { db } from '@/lib/db';
+import { updateTeamSchema } from '@/lib/validations';
+import { ZodError } from 'zod';
 import { NextRequest, NextResponse } from 'next/server';
 
 export async function PATCH(
@@ -8,13 +10,21 @@ export async function PATCH(
   try {
     const { id } = await params;
     const body = await request.json();
+    const data = updateTeamSchema.parse(body);
+
     const team = await db.team.update({
       where: { id },
-      data: body,
+      data,
       include: { agents: true },
     });
     return NextResponse.json(team);
   } catch (error) {
+    if (error instanceof ZodError) {
+      return NextResponse.json(
+        { error: 'Validation failed', details: error.flatten().fieldErrors },
+        { status: 400 }
+      );
+    }
     console.error('Failed to update team:', error);
     return NextResponse.json({ error: 'Failed to update team' }, { status: 500 });
   }

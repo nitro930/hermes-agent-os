@@ -1,4 +1,6 @@
 import { db } from '@/lib/db';
+import { updateGoalSchema } from '@/lib/validations';
+import { ZodError } from 'zod';
 import { NextRequest, NextResponse } from 'next/server';
 
 export async function PATCH(
@@ -8,13 +10,15 @@ export async function PATCH(
   try {
     const { id } = await params;
     const body = await request.json();
+    const data = updateGoalSchema.parse(body);
+
     const goal = await db.goal.update({
       where: { id },
-      data: body,
+      data,
       include: { agent: { select: { id: true, name: true, avatar: true } } },
     });
 
-    if (body.status === 'completed') {
+    if (data.status === 'completed') {
       await db.activityLog.create({
         data: {
           agentId: goal.agentId,
@@ -28,6 +32,12 @@ export async function PATCH(
 
     return NextResponse.json(goal);
   } catch (error) {
+    if (error instanceof ZodError) {
+      return NextResponse.json(
+        { error: 'Validation failed', details: error.flatten().fieldErrors },
+        { status: 400 }
+      );
+    }
     console.error('Failed to update goal:', error);
     return NextResponse.json({ error: 'Failed to update goal' }, { status: 500 });
   }

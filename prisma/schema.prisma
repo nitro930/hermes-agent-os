@@ -25,8 +25,14 @@ model Agent {
   skills      Skill[]
   goals       Goal[]
   delegates   Delegate[]
+  artifacts   Artifact[]
+  cronJobs    CronJob[]
   createdAt   DateTime @default(now())
   updatedAt   DateTime @updatedAt
+
+  @@index([teamId])
+  @@index([status])
+  @@index([type])
 }
 
 model Team {
@@ -53,6 +59,11 @@ model Task {
   dueDate     String?
   createdAt   DateTime @default(now())
   updatedAt   DateTime @updatedAt
+
+  @@index([agentId])
+  @@index([status])
+  @@index([column])
+  @@index([priority])
 }
 
 model Memory {
@@ -67,6 +78,11 @@ model Memory {
   isPinned    Boolean  @default(false)
   createdAt   DateTime @default(now())
   updatedAt   DateTime @updatedAt
+
+  @@index([agentId])
+  @@index([folder])
+  @@index([type])
+  @@index([isPinned])
 }
 
 model Conversation {
@@ -77,6 +93,8 @@ model Conversation {
   messages    Message[]
   createdAt   DateTime @default(now())
   updatedAt   DateTime @updatedAt
+
+  @@index([agentId])
 }
 
 model Message {
@@ -86,6 +104,9 @@ model Message {
   role           String       // user, assistant, system
   content        String
   createdAt      DateTime     @default(now())
+
+  @@index([conversationId])
+  @@index([createdAt])
 }
 
 model Automation {
@@ -99,6 +120,9 @@ model Automation {
   lastRunAt   DateTime?
   createdAt   DateTime @default(now())
   updatedAt   DateTime @updatedAt
+
+  @@index([isActive])
+  @@index([trigger])
 }
 
 model ActivityLog {
@@ -109,6 +133,10 @@ model ActivityLog {
   details   String?
   type      String   @default("info") // info, success, warning, error
   createdAt DateTime @default(now())
+
+  @@index([createdAt])
+  @@index([type])
+  @@index([agentId])
 }
 
 model Skill {
@@ -124,6 +152,9 @@ model Skill {
   agent       Agent?   @relation(fields: [agentId], references: [id])
   createdAt   DateTime @default(now())
   updatedAt   DateTime @updatedAt
+
+  @@index([agentId])
+  @@index([category])
 }
 
 model Goal {
@@ -138,6 +169,9 @@ model Goal {
   dueDate     String?
   createdAt   DateTime @default(now())
   updatedAt   DateTime @updatedAt
+
+  @@index([agentId])
+  @@index([status])
 }
 
 model Delegate {
@@ -151,6 +185,9 @@ model Delegate {
   parentAgent Agent   @relation(fields: [parentAgentId], references: [id])
   createdAt   DateTime @default(now())
   updatedAt   DateTime @updatedAt
+
+  @@index([parentAgentId])
+  @@index([status])
 }
 
 model McpServer {
@@ -162,4 +199,91 @@ model McpServer {
   toolsCount  Int      @default(0)
   createdAt   DateTime @default(now())
   updatedAt   DateTime @updatedAt
+
+  @@index([status])
+}
+
+model Artifact {
+  id          String   @id @default(cuid())
+  title       String
+  description String?
+  type        String   @default("html") // html, react, code, markdown, json, css, text
+  content     String   // the actual code/content
+  preview     String?  // rendered preview URL or base64 screenshot
+  status      String   @default("draft") // draft, building, ready, error, deployed
+  agentId     String?
+  agent       Agent?   @relation(fields: [agentId], references: [id])
+  taskId      String?  // linked task that created this
+  tags        String?
+  version     Int      @default(1)
+  isPublic    Boolean  @default(false)
+  versions    ArtifactVersion[]
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  @@index([agentId])
+  @@index([type])
+  @@index([status])
+  @@index([isPublic])
+}
+
+model ArtifactVersion {
+  id          String   @id @default(cuid())
+  artifactId  String
+  artifact    Artifact @relation(fields: [artifactId], references: [id], onDelete: Cascade)
+  version     Int
+  content     String
+  title       String
+  type        String
+  changeNote  String?  // optional description of what changed
+  createdAt   DateTime @default(now())
+
+  @@unique([artifactId, version])
+  @@index([artifactId])
+  @@index([createdAt])
+}
+
+model CronJob {
+  id            String   @id @default(cuid())
+  name          String
+  description   String?
+  schedule      String   // cron expression: "*/5 * * * *" or shorthand: "@hourly", "@daily"
+  timezone      String   @default("UTC")
+  action        String   // run_agent, create_task, send_message, notify, webhook
+  config        String   // JSON config for the action
+  isActive      Boolean  @default(true)
+  isSystem      Boolean  @default(false) // system-managed jobs can't be deleted
+  lastRunAt     DateTime?
+  nextRunAt     DateTime?
+  runCount      Int      @default(0)
+  failCount     Int      @default(0)
+  lastError     String?
+  lastDuration  Int?     // ms
+  agentId       String?  // optional: linked agent
+  agent         Agent?   @relation(fields: [agentId], references: [id], onDelete: SetNull)
+  executions    CronExecution[]
+  createdAt     DateTime @default(now())
+  updatedAt     DateTime @updatedAt
+
+  @@index([isActive])
+  @@index([nextRunAt])
+  @@index([agentId])
+  @@index([action])
+}
+
+model CronExecution {
+  id          String   @id @default(cuid())
+  cronJobId   String
+  cronJob     CronJob  @relation(fields: [cronJobId], references: [id], onDelete: Cascade)
+  status      String   @default("running") // running, success, failed, timeout
+  startedAt   DateTime @default(now())
+  completedAt DateTime?
+  duration    Int?     // ms
+  result      String?  // JSON result summary
+  error       String?  // error message if failed
+  triggerType String   @default("scheduled") // scheduled, manual
+
+  @@index([cronJobId])
+  @@index([status])
+  @@index([startedAt])
 }

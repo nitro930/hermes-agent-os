@@ -3,7 +3,7 @@ import { NextResponse } from 'next/server';
 
 export async function GET() {
   try {
-    const [totalAgents, activeAgents, tasksCompleted, memoryEntries, totalTasks, runningAutomations, totalSkills, totalGoals, activeGoals, mcpConnections, totalMcpServers] =
+    const [totalAgents, activeAgents, tasksCompleted, memoryEntries, totalTasks, runningAutomations, totalSkills, totalGoals, activeGoals, mcpConnections, totalMcpServers, totalCronJobs, activeCronJobs, cronRunsToday] =
       await Promise.all([
         db.agent.count(),
         db.agent.count({ where: { status: 'running' } }),
@@ -16,6 +16,9 @@ export async function GET() {
         db.goal.count({ where: { status: 'active' } }),
         db.mcpServer.count({ where: { status: 'connected' } }),
         db.mcpServer.count(),
+        db.cronJob.count(),
+        db.cronJob.count({ where: { isActive: true } }),
+        db.cronExecution.count({ where: { startedAt: { gte: new Date(Date.now() - 24 * 60 * 60 * 1000) } } }),
       ]);
 
     const agentsByStatus = await db.agent.groupBy({ by: ['status'], _count: true });
@@ -33,6 +36,9 @@ export async function GET() {
       activeGoals,
       mcpConnections,
       totalMcpServers,
+      totalCronJobs,
+      activeCronJobs,
+      cronRunsToday,
       agentsByStatus,
       tasksByStatus,
     });

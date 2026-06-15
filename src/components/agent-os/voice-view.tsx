@@ -66,7 +66,8 @@ export function VoiceView() {
   const [sessionDuration, setSessionDuration] = useState(0);
   const [errorMessage, setErrorMessage] = useState<string>('');
   
-  const recognitionRef = useRef<SpeechRecognition | null>(null);
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  const recognitionRef = useRef<any>(null);
   const sessionStartRef = useRef<Date | null>(null);
   const timerRef = useRef<NodeJS.Timeout | null>(null);
 
@@ -215,7 +216,9 @@ export function VoiceView() {
 
   // Start listening using Web Speech API
   function startListening() {
-    const SpeechRecognitionAPI = (window as unknown as { SpeechRecognition?: typeof window.SpeechRecognition; webkitSpeechRecognition?: typeof window.SpeechRecognition }).SpeechRecognition || (window as unknown as { webkitSpeechRecognition?: typeof window.SpeechRecognition }).webkitSpeechRecognition;
+    type SRConstructor = new () => EventTarget & { continuous: boolean; interimResults: boolean; lang: string; start: () => void; stop: () => void; abort: () => void; onstart: (() => void) | null; onend: (() => void) | null; onerror: ((ev: Event) => void) | null; onresult: ((ev: Event) => void) | null };
+    const win = window as unknown as { SpeechRecognition?: SRConstructor; webkitSpeechRecognition?: SRConstructor };
+    const SpeechRecognitionAPI = win.SpeechRecognition || win.webkitSpeechRecognition;
     
     if (!SpeechRecognitionAPI) {
       setErrorMessage('Speech recognition is not supported in this browser. Please use Chrome or Edge.');
@@ -236,8 +239,9 @@ export function VoiceView() {
       setStatus('listening');
     };
 
-    recognition.onresult = (event: SpeechRecognitionEvent) => {
-      const transcript_text = event.results[0][0].transcript;
+    recognition.onresult = (event: Event) => {
+      const srEvent = event as unknown as { results: { 0: { 0: { transcript: string } } } };
+      const transcript_text = srEvent.results[0][0].transcript;
       
       const userEntry: TranscriptEntry = {
         id: Date.now().toString(),
@@ -252,14 +256,15 @@ export function VoiceView() {
       getAIResponse(transcript_text);
     };
 
-    recognition.onerror = (event) => {
-      console.error('Speech recognition error:', event.error);
-      if (event.error === 'not-allowed') {
+    recognition.onerror = (event: Event) => {
+      const errEvent = event as unknown as { error: string };
+      console.error('Speech recognition error:', errEvent.error);
+      if (errEvent.error === 'not-allowed') {
         setErrorMessage('Microphone access denied. Please allow microphone access in your browser settings.');
-      } else if (event.error === 'no-speech') {
+      } else if (errEvent.error === 'no-speech') {
         setErrorMessage('No speech detected. Please try again.');
       } else {
-        setErrorMessage(`Recognition error: ${event.error}`);
+        setErrorMessage(`Recognition error: ${errEvent.error}`);
       }
       setStatus('idle');
       setIsRecording(false);

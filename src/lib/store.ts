@@ -1,6 +1,16 @@
 import { create } from 'zustand';
 
-export type ActiveView = 'dashboard' | 'agents' | 'chat' | 'memory' | 'tasks' | 'automations' | 'teams' | 'skills' | 'goals' | 'voice' | 'mcp';
+export type ActiveView = 'dashboard' | 'agents' | 'chat' | 'memory' | 'tasks' | 'automations' | 'teams' | 'skills' | 'goals' | 'voice' | 'mcp' | 'dev';
+
+export const VALID_VIEWS: ActiveView[] = ['dashboard', 'agents', 'chat', 'memory', 'tasks', 'automations', 'teams', 'skills', 'goals', 'voice', 'mcp', 'dev'];
+
+/** Read the initial view from the URL hash (e.g. #agents) */
+function getInitialView(): ActiveView {
+  if (typeof window === 'undefined') return 'dashboard';
+  const hash = window.location.hash.replace('#', '');
+  if (VALID_VIEWS.includes(hash as ActiveView)) return hash as ActiveView;
+  return 'dashboard';
+}
 
 export interface Notification {
   id: string;
@@ -19,6 +29,9 @@ interface AppState {
   selectedFolder: string;
   sidebarOpen: boolean;
   notifications: Notification[];
+  // Dev Server state
+  selectedArtifactId: string | null;
+  devServerLive: boolean;
   setActiveView: (view: ActiveView) => void;
   setSelectedAgentId: (id: string | null) => void;
   setSelectedConversationId: (id: string | null) => void;
@@ -28,17 +41,30 @@ interface AppState {
   addNotification: (notification: Omit<Notification, 'id' | 'timestamp' | 'read'>) => void;
   markNotificationRead: (id: string) => void;
   clearNotifications: () => void;
+  setSelectedArtifactId: (id: string | null) => void;
+  setDevServerLive: (live: boolean) => void;
 }
 
 export const useAppStore = create<AppState>((set) => ({
-  activeView: 'dashboard',
+  activeView: getInitialView(),
   selectedAgentId: null,
   selectedConversationId: null,
   selectedMemoryId: null,
   selectedFolder: 'General',
   sidebarOpen: true,
   notifications: [],
-  setActiveView: (view) => set({ activeView: view }),
+  selectedArtifactId: null,
+  devServerLive: true,
+  setActiveView: (view) => {
+    // Sync with URL hash for deep linking & browser back/forward
+    if (typeof window !== 'undefined') {
+      const newHash = `#${view}`;
+      if (window.location.hash !== newHash) {
+        window.history.pushState(null, '', newHash);
+      }
+    }
+    set({ activeView: view });
+  },
   setSelectedAgentId: (id) => set({ selectedAgentId: id }),
   setSelectedConversationId: (id) => set({ selectedConversationId: id }),
   setSelectedMemoryId: (id) => set({ selectedMemoryId: id }),
@@ -54,4 +80,6 @@ export const useAppStore = create<AppState>((set) => ({
     notifications: state.notifications.map((n) => n.id === id ? { ...n, read: true } : n),
   })),
   clearNotifications: () => set({ notifications: [] }),
+  setSelectedArtifactId: (id) => set({ selectedArtifactId: id }),
+  setDevServerLive: (live) => set({ devServerLive: live }),
 }));

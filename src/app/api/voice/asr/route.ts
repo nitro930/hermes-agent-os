@@ -17,10 +17,12 @@ export async function POST(request: NextRequest) {
       const ZAI = (await import('z-ai-web-dev-sdk')).default;
       const zai = await ZAI.create();
       
-      const result = await zai.asr.transcribe({
+      // Use functions.invoke for ASR since the SDK doesn't have typed ASR method
+      const zaiAny = zai as unknown as { functions: { invoke: (fn: string, params: Record<string, unknown>) => Promise<unknown> } };
+      const result = await zaiAny.functions.invoke('asr', {
         audio: base64Audio,
         format: audioFile.type || 'audio/webm',
-      });
+      }) as { text?: string; confidence?: number };
 
       return NextResponse.json({
         text: result.text || '',

@@ -20,6 +20,7 @@ import {
   Moon,
   Bell,
   Search,
+  Globe,
 } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Separator } from '@/components/ui/separator';
@@ -36,6 +37,7 @@ const navItems: { view: ActiveView; label: string; icon: React.ElementType }[] =
   { view: 'memory', label: 'Memory', icon: Brain },
   { view: 'tasks', label: 'Tasks', icon: Kanban },
   { view: 'automations', label: 'Automations', icon: Zap },
+  { view: 'dev', label: 'Dev Server', icon: Globe },
   { view: 'teams', label: 'Teams', icon: Users },
   { view: 'skills', label: 'Skills', icon: Wrench },
   { view: 'goals', label: 'Goals', icon: Target },

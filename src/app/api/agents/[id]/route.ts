@@ -1,5 +1,7 @@
 import { db } from '@/lib/db';
+import { idSchema, updateAgentSchema } from '@/lib/validations';
 import { NextRequest, NextResponse } from 'next/server';
+import { ZodError } from 'zod';
 
 export async function GET(
   _request: NextRequest,
@@ -7,6 +9,14 @@ export async function GET(
 ) {
   try {
     const { id } = await params;
+    const paramValidation = idSchema.safeParse({ id });
+    if (!paramValidation.success) {
+      return NextResponse.json(
+        { error: 'Invalid agent ID', details: paramValidation.error.flatten().fieldErrors },
+        { status: 400 },
+      );
+    }
+
     const agent = await db.agent.findUnique({
       where: { id },
       include: {
@@ -35,14 +45,36 @@ export async function PATCH(
 ) {
   try {
     const { id } = await params;
+    const paramValidation = idSchema.safeParse({ id });
+    if (!paramValidation.success) {
+      return NextResponse.json(
+        { error: 'Invalid agent ID', details: paramValidation.error.flatten().fieldErrors },
+        { status: 400 },
+      );
+    }
+
     const body = await request.json();
+    const validated = updateAgentSchema.parse(body);
+
+    // Build update data only from whitelisted fields present in validated schema
+    const updateData: Record<string, unknown> = {};
+    if (validated.name !== undefined) updateData.name = validated.name;
+    if (validated.description !== undefined) updateData.description = validated.description;
+    if (validated.type !== undefined) updateData.type = validated.type;
+    if (validated.avatar !== undefined) updateData.avatar = validated.avatar;
+    if (validated.status !== undefined) updateData.status = validated.status;
+    if (validated.systemPrompt !== undefined) updateData.systemPrompt = validated.systemPrompt;
+    if (validated.soulMd !== undefined) updateData.soulMd = validated.soulMd;
+    if (validated.model !== undefined) updateData.model = validated.model;
+    if (validated.teamId !== undefined) updateData.teamId = validated.teamId;
+
     const agent = await db.agent.update({
       where: { id },
-      data: body,
+      data: updateData,
       include: { team: true },
     });
 
-    if (body.status) {
+    if (validated.status) {
       await db.activityLog.create({
         data: {
           agentId: agent.id,
@@ -54,7 +86,7 @@ export async function PATCH(
       });
     }
 
-    if (body.soulMd !== undefined) {
+    if (validated.soulMd !== undefined) {
       await db.activityLog.create({
         data: {
           agentId: agent.id,
@@ -68,6 +100,12 @@ export async function PATCH(
 
     return NextResponse.json(agent);
   } catch (error) {
+    if (error instanceof ZodError) {
+      return NextResponse.json(
+        { error: 'Validation failed', details: error.flatten().fieldErrors },
+        { status: 400 },
+      );
+    }
     console.error('Failed to update agent:', error);
     return NextResponse.json({ error: 'Failed to update agent' }, { status: 500 });
   }
@@ -79,6 +117,14 @@ export async function DELETE(
 ) {
   try {
     const { id } = await params;
+    const paramValidation = idSchema.safeParse({ id });
+    if (!paramValidation.success) {
+      return NextResponse.json(
+        { error: 'Invalid agent ID', details: paramValidation.error.flatten().fieldErrors },
+        { status: 400 },
+      );
+    }
+
     const agent = await db.agent.delete({ where: { id } });
     await db.activityLog.create({
       data: {

@@ -1,0 +1,919 @@
+     1→'use client';
+     2→
+     3→import { useEffect, useState, useCallback, useRef } from 'react';
+     4→import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
+     5→import { Button } from '@/components/ui/button';
+     6→import { Badge } from '@/components/ui/badge';
+     7→import { ScrollArea } from '@/components/ui/scroll-area';
+     8→import { Input } from '@/components/ui/input';
+     9→import { Textarea } from '@/components/ui/textarea';
+    10→import {
+    11→  Select,
+    12→  SelectContent,
+    13→  SelectItem,
+    14→  SelectTrigger,
+    15→  SelectValue,
+    16→} from '@/components/ui/select';
+    17→import { Label } from '@/components/ui/label';
+    18→import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
+    19→import {
+    20→  Dialog,
+    21→  DialogContent,
+    22→  DialogHeader,
+    23→  DialogTitle,
+    24→  DialogTrigger,
+    25→  DialogFooter,
+    26→  DialogDescription,
+    27→} from '@/components/ui/dialog';
+    28→import {
+    29→  Plus,
+    30→  Trash2,
+    31→  Code2,
+    32→  Eye,
+    33→  Save,
+    34→  Globe,
+    35→  Play,
+    36→  RefreshCw,
+    37→  Monitor,
+    38→  Smartphone,
+    39→  Tablet,
+    40→  ExternalLink,
+    41→  Copy,
+    42→  Check,
+    43→  FileCode2,
+    44→  FileJson,
+    45→  FileType,
+    46→  Palette,
+    47→  Braces,
+    48→  Sparkles,
+    49→  Clock,
+    50→  User,
+    51→  X,
+    52→  Maximize2,
+    53→  Minimize2,
+    54→  Search,
+    55→} from 'lucide-react';
+    56→import { useToast } from '@/hooks/use-toast';
+    57→import { useAppStore } from '@/lib/store';
+    58→
+    59→interface Artifact {
+    60→  id: string;
+    61→  title: string;
+    62→  description: string | null;
+    63→  type: string;
+    64→  content: string;
+    65→  preview: string | null;
+    66→  status: string;
+    67→  agentId: string | null;
+    68→  agent?: { id: string; name: string; avatar: string | null } | null;
+    69→  taskId: string | null;
+    70→  tags: string | null;
+    71→  version: number;
+    72→  isPublic: boolean;
+    73→  createdAt: string;
+    74→  updatedAt: string;
+    75→}
+    76→
+    77→interface Agent {
+    78→  id: string;
+    79→  name: string;
+    80→  avatar: string | null;
+    81→  type: string;
+    82→}
+    83→
+    84→const typeIcons: Record<string, React.ElementType> = {
+    85→  html: FileCode2,
+    86→  react: FileCode2,
+    87→  code: Code2,
+    88→  markdown: FileType,
+    89→  json: FileJson,
+    90→  css: Palette,
+    91→  text: FileType,
+    92→};
+    93→
+    94→const typeColors: Record<string, string> = {
+    95→  html: 'bg-orange-500/20 text-orange-400',
+    96→  react: 'bg-cyan-500/20 text-cyan-400',
+    97→  code: 'bg-emerald-500/20 text-emerald-400',
+    98→  markdown: 'bg-blue-500/20 text-blue-400',
+    99→  json: 'bg-yellow-500/20 text-yellow-400',
+   100→  css: 'bg-purple-500/20 text-purple-400',
+   101→  text: 'bg-slate-500/20 text-slate-400',
+   102→};
+   103→
+   104→const statusColors: Record<string, string> = {
+   105→  draft: 'bg-slate-500/20 text-slate-400',
+   106→  building: 'bg-yellow-500/20 text-yellow-400',
+   107→  ready: 'bg-emerald-500/20 text-emerald-400',
+   108→  error: 'bg-red-500/20 text-red-400',
+   109→  deployed: 'bg-cyan-500/20 text-cyan-400',
+   110→};
+   111→
+   112→type PreviewDevice = 'desktop' | 'tablet' | 'mobile';
+   113→
+   114→export function DevView() {
+   115→  const { toast } = useToast();
+   116→  const [artifacts, setArtifacts] = useState<Artifact[]>([]);
+   117→  const [selectedArtifact, setSelectedArtifact] = useState<Artifact | null>(null);
+   118→  const [loading, setLoading] = useState(true);
+   119→  const [createOpen, setCreateOpen] = useState(false);
+   120→  const [editMode, setEditMode] = useState(false);
+   121→  const [editContent, setEditContent] = useState({ title: '', content: '', type: 'html', description: '', tags: '' });
+   122→  const [hasUnsavedChanges, setHasUnsavedChanges] = useState(false);
+   123→  const [activeTab, setActiveTab] = useState<'code' | 'preview'>('preview');
+   124→  const [previewDevice, setPreviewDevice] = useState<PreviewDevice>('desktop');
+   125→  const [previewKey, setPreviewKey] = useState(0);
+   126→  const [searchQuery, setSearchQuery] = useState('');
+   127→  const [filterType, setFilterType] = useState('all');
+   128→  const [copied, setCopied] = useState(false);
+   129→  const [agents, setAgents] = useState<Agent[]>([]);
+   130→  const [newArtifact, setNewArtifact] = useState({
+   131→    title: '',
+   132→    content: '',
+   133→    type: 'html',
+   134→    description: '',
+   135→    tags: '',
+   136→  });
+   137→  const [isFullscreen, setIsFullscreen] = useState(false);
+   138→  const iframeRef = useRef<HTMLIFrameElement>(null);
+   139→
+   140→  const loadArtifacts = useCallback(async () => {
+   141→    try {
+   142→      const params = new URLSearchParams();
+   143→      if (filterType && filterType !== 'all') params.set('type', filterType);
+   144→      const res = await fetch(`/api/artifacts?${params.toString()}`);
+   145→      if (res.ok) {
+   146→        const data = await res.json();
+   147→        // Client-side search filter
+   148→        if (searchQuery) {
+   149→          const q = searchQuery.toLowerCase();
+   150→          setArtifacts(data.filter((a: Artifact) =>
+   151→            a.title.toLowerCase().includes(q) ||
+   152→            (a.description || '').toLowerCase().includes(q) ||
+   153→            (a.tags || '').toLowerCase().includes(q)
+   154→          ));
+   155→        } else {
+   156→          setArtifacts(data);
+   157→        }
+   158→      }
+   159→    } catch (error) {
+   160→      console.error('Failed to load artifacts:', error);
+   161→    } finally {
+   162→      setLoading(false);
+   163→    }
+   164→  }, [filterType, searchQuery]);
+   165→
+   166→  const loadAgents = useCallback(async () => {
+   167→    try {
+   168→      const res = await fetch('/api/agents');
+   169→      if (res.ok) setAgents(await res.json());
+   170→    } catch {
+   171→      // Ignore
+   172→    }
+   173→  }, []);
+   174→
+   175→  useEffect(() => {
+   176→    loadArtifacts();
+   177→    loadAgents();
+   178→  }, [loadArtifacts, loadAgents]);
+   179→
+   180→  function selectArtifact(artifact: Artifact) {
+   181→    if (hasUnsavedChanges) {
+   182→      if (!window.confirm('You have unsaved changes. Discard them?')) return;
+   183→    }
+   184→    setSelectedArtifact(artifact);
+   185→    setEditMode(false);
+   186→    setEditContent({
+   187→      title: artifact.title,
+   188→      content: artifact.content,
+   189→      type: artifact.type,
+   190→      description: artifact.description || '',
+   191→      tags: artifact.tags || '',
+   192→    });
+   193→    setHasUnsavedChanges(false);
+   194→    setActiveTab('preview');
+   195→    setPreviewKey(k => k + 1); // Force iframe reload
+   196→  }
+   197→
+   198→  async function createArtifact() {
+   199→    try {
+   200→      const res = await fetch('/api/artifacts', {
+   201→        method: 'POST',
+   202→        headers: { 'Content-Type': 'application/json' },
+   203→        body: JSON.stringify({
+   204→          ...newArtifact,
+   205→          tags: newArtifact.tags || null,
+   206→        }),
+   207→      });
+   208→      if (res.ok) {
+   209→        const artifact = await res.json();
+   210→        toast({ title: 'Artifact created' });
+   211→        setCreateOpen(false);
+   212→        setNewArtifact({ title: '', content: '', type: 'html', description: '', tags: '' });
+   213→        loadArtifacts();
+   214→        selectArtifact(artifact);
+   215→      }
+   216→    } catch {
+   217→      toast({ title: 'Failed to create artifact', variant: 'destructive' });
+   218→    }
+   219→  }
+   220→
+   221→  async function updateArtifact() {
+   222→    if (!selectedArtifact) return;
+   223→    try {
+   224→      const res = await fetch(`/api/artifacts/${selectedArtifact.id}`, {
+   225→        method: 'PATCH',
+   226→        headers: { 'Content-Type': 'application/json' },
+   227→        body: JSON.stringify({
+   228→          title: editContent.title,
+   229→          content: editContent.content,
+   230→          type: editContent.type,
+   231→          description: editContent.description || null,
+   232→          tags: editContent.tags || null,
+   233→        }),
+   234→      });
+   235→      if (res.ok) {
+   236→        const updated = await res.json();
+   237→        toast({ title: 'Artifact saved' });
+   238→        setHasUnsavedChanges(false);
+   239→        setSelectedArtifact(updated);
+   240→        setPreviewKey(k => k + 1);
+   241→        loadArtifacts();
+   242→      }
+   243→    } catch {
+   244→      toast({ title: 'Failed to save artifact', variant: 'destructive' });
+   245→    }
+   246→  }
+   247→
+   248→  async function deleteArtifact(id: string) {
+   249→    try {
+   250→      const res = await fetch(`/api/artifacts/${id}`, { method: 'DELETE' });
+   251→      if (res.ok) {
+   252→        toast({ title: 'Artifact deleted' });
+   253→        if (selectedArtifact?.id === id) {
+   254→          setSelectedArtifact(null);
+   255→          setEditMode(false);
+   256→        }
+   257→        loadArtifacts();
+   258→      }
+   259→    } catch {
+   260→      toast({ title: 'Failed to delete artifact', variant: 'destructive' });
+   261→    }
+   262→  }
+   263→
+   264→  async function deployArtifact() {
+   265→    if (!selectedArtifact) return;
+   266→    try {
+   267→      const res = await fetch(`/api/artifacts/${selectedArtifact.id}`, {
+   268→        method: 'PATCH',
+   269→        headers: { 'Content-Type': 'application/json' },
+   270→        body: JSON.stringify({ status: 'deployed', isPublic: true }),
+   271→      });
+   272→      if (res.ok) {
+   273→        const updated = await res.json();
+   274→        setSelectedArtifact(updated);
+   275→        toast({ title: 'Artifact deployed!', description: 'Now publicly accessible' });
+   276→        loadArtifacts();
+   277→      }
+   278→    } catch {
+   279→      toast({ title: 'Deploy failed', variant: 'destructive' });
+   280→    }
+   281→  }
+   282→
+   283→  function copyContent() {
+   284→    if (!selectedArtifact) return;
+   285→    navigator.clipboard.writeText(editMode ? editContent.content : selectedArtifact.content);
+   286→    setCopied(true);
+   287→    setTimeout(() => setCopied(false), 2000);
+   288→    toast({ title: 'Copied to clipboard' });
+   289→  }
+   290→
+   291→  function openPreviewInNewTab() {
+   292→    if (!selectedArtifact) return;
+   293→    window.open(`/api/artifacts/${selectedArtifact.id}/preview`, '_blank');
+   294→  }
+   295→
+   296→  // Ctrl+S to save
+   297→  useEffect(() => {
+   298→    function handleKeyDown(e: KeyboardEvent) {
+   299→      if ((e.metaKey || e.ctrlKey) && e.key === 's') {
+   300→        e.preventDefault();
+   301→        if (hasUnsavedChanges && selectedArtifact) updateArtifact();
+   302→      }
+   303→    }
+   304→    document.addEventListener('keydown', handleKeyDown);
+   305→    return () => document.removeEventListener('keydown', handleKeyDown);
+   306→  });
+   307→
+   308→  // Generate AI artifact via API
+   309→  async function generateArtifact() {
+   310→    try {
+   311→      const res = await fetch('/api/artifacts/generate', {
+   312→        method: 'POST',
+   313→        headers: { 'Content-Type': 'application/json' },
+   314→        body: JSON.stringify({
+   315→          description: editContent.description || editContent.title || 'A simple landing page',
+   316→          type: editContent.type,
+   317→        }),
+   318→      });
+   319→
+   320→      if (res.ok) {
+   321→        const data = await res.json();
+   322→        setEditContent({ ...editContent, content: data.content });
+   323→        setHasUnsavedChanges(true);
+   324→        toast({ title: 'AI generated content', description: 'Review and save when ready' });
+   325→      } else {
+   326→        toast({ title: 'AI generation failed', variant: 'destructive' });
+   327→      }
+   328→    } catch {
+   329→      toast({ title: 'AI generation failed', variant: 'destructive' });
+   330→    }
+   331→  }
+   332→
+   333→  const previewWidths: Record<PreviewDevice, string> = {
+   334→    desktop: '100%',
+   335→    tablet: '768px',
+   336→    mobile: '375px',
+   337→  };
+   338→
+   339→  if (loading) {
+   340→    return (
+   341→      <div className="flex items-center justify-center h-full">
+   342→        <div className="flex flex-col items-center gap-3">
+   343→          <div className="w-8 h-8 border-2 border-emerald-500 border-t-transparent rounded-full animate-spin" />
+   344→          <span className="text-sm text-muted-foreground">Loading Dev Server...</span>
+   345→        </div>
+   346→      </div>
+   347→    );
+   348→  }
+   349→
+   350→  return (
+   351→    <div className="space-y-6">
+   352→      {/* Header */}
+   353→      <div className="flex items-center justify-between">
+   354→        <div>
+   355→          <h1 className="text-2xl font-bold flex items-center gap-2">
+   356→            <Globe className="w-6 h-6 text-emerald-400" />
+   357→            Dev Server
+   358→          </h1>
+   359→          <p className="text-sm text-muted-foreground">Live preview & artifact management for agent-generated code</p>
+   360→        </div>
+   361→        <div className="flex items-center gap-2">
+   362→          <Dialog open={createOpen} onOpenChange={setCreateOpen}>
+   363→            <DialogTrigger asChild>
+   364→              <Button className="bg-emerald-600 hover:bg-emerald-700 text-white">
+   365→                <Plus className="w-4 h-4 mr-1.5" />
+   366→                New Artifact
+   367→              </Button>
+   368→            </DialogTrigger>
+   369→            <DialogContent className="bg-card border-border max-w-2xl">
+   370→              <DialogHeader>
+   371→                <DialogTitle>Create Artifact</DialogTitle>
+   372→                <DialogDescription>Build a new artifact for the dev server</DialogDescription>
+   373→              </DialogHeader>
+   374→              <div className="space-y-4">
+   375→                <div className="grid grid-cols-2 gap-4">
+   376→                  <div className="space-y-2">
+   377→                    <Label>Title</Label>
+   378→                    <Input
+   379→                      value={newArtifact.title}
+   380→                      onChange={(e) => setNewArtifact({ ...newArtifact, title: e.target.value })}
+   381→                      placeholder="My Component..."
+   382→                      className="bg-secondary border-border"
+   383→                    />
+   384→                  </div>
+   385→                  <div className="space-y-2">
+   386→                    <Label>Type</Label>
+   387→                    <Select value={newArtifact.type} onValueChange={(v) => setNewArtifact({ ...newArtifact, type: v })}>
+   388→                      <SelectTrigger className="bg-secondary border-border">
+   389→                        <SelectValue />
+   390→                      </SelectTrigger>
+   391→                      <SelectContent className="bg-card border-border">
+   392→                        <SelectItem value="html">HTML</SelectItem>
+   393→                        <SelectItem value="react">React/JSX</SelectItem>
+   394→                        <SelectItem value="code">Code</SelectItem>
+   395→                        <SelectItem value="css">CSS</SelectItem>
+   396→                        <SelectItem value="json">JSON</SelectItem>
+   397→                        <SelectItem value="markdown">Markdown</SelectItem>
+   398→                        <SelectItem value="text">Text</SelectItem>
+   399→                      </SelectContent>
+   400→                    </Select>
+   401→                  </div>
+   402→                </div>
+   403→                <div className="space-y-2">
+   404→                  <Label>Description</Label>
+   405→                  <Input
+   406→                    value={newArtifact.description}
+   407→                    onChange={(e) => setNewArtifact({ ...newArtifact, description: e.target.value })}
+   408→                    placeholder="What does this artifact do?"
+   409→                    className="bg-secondary border-border"
+   410→                  />
+   411→                </div>
+   412→                <div className="space-y-2">
+   413→                  <div className="flex items-center justify-between">
+   414→                    <Label>Content</Label>
+   415→                    <Button
+   416→                      variant="ghost"
+   417→                      size="sm"
+   418→                      className="text-xs text-emerald-400 hover:text-emerald-300"
+   419→                      onClick={generateArtifact}
+   420→                      type="button"
+   421→                    >
+   422→                      <Sparkles className="w-3 h-3 mr-1" /> AI Generate
+   423→                    </Button>
+   424→                  </div>
+   425→                  <Textarea
+   426→                    value={newArtifact.content}
+   427→                    onChange={(e) => setNewArtifact({ ...newArtifact, content: e.target.value })}
+   428→                    placeholder="Write your code here... or use AI Generate"
+   429→                    className="bg-secondary border-border font-mono text-sm min-h-48"
+   430→                  />
+   431→                </div>
+   432→                <div className="space-y-2">
+   433→                  <Label>Tags</Label>
+   434→                  <Input
+   435→                    value={newArtifact.tags}
+   436→                    onChange={(e) => setNewArtifact({ ...newArtifact, tags: e.target.value })}
+   437→                    placeholder="landing, dashboard, component"
+   438→                    className="bg-secondary border-border"
+   439→                  />
+   440→                </div>
+   441→              </div>
+   442→              <DialogFooter>
+   443→                <Button variant="outline" onClick={() => setCreateOpen(false)}>Cancel</Button>
+   444→                <Button
+   445→                  className="bg-emerald-600 hover:bg-emerald-700 text-white"
+   446→                  onClick={createArtifact}
+   447→                  disabled={!newArtifact.title || !newArtifact.content}
+   448→                >
+   449→                  Create & Preview
+   450→                </Button>
+   451→              </DialogFooter>
+   452→            </DialogContent>
+   453→          </Dialog>
+   454→        </div>
+   455→      </div>
+   456→
+   457→      <div className="flex gap-4 h-[calc(100vh-12rem)]">
+   458→        {/* Artifact Sidebar */}
+   459→        <Card className="w-72 shrink-0 bg-card border-border flex flex-col">
+   460→          <CardHeader className="p-3 pb-2">
+   461→            <div className="flex items-center justify-between">
+   462→              <CardTitle className="text-xs font-semibold text-muted-foreground">
+   463→                Artifacts ({artifacts.length})
+   464→              </CardTitle>
+   465→              <Select value={filterType} onValueChange={setFilterType}>
+   466→                <SelectTrigger className="bg-secondary border-border text-[10px] h-6 w-20">
+   467→                  <SelectValue />
+   468→                </SelectTrigger>
+   469→                <SelectContent className="bg-card border-border">
+   470→                  <SelectItem value="all">All</SelectItem>
+   471→                  <SelectItem value="html">HTML</SelectItem>
+   472→                  <SelectItem value="react">React</SelectItem>
+   473→                  <SelectItem value="code">Code</SelectItem>
+   474→                  <SelectItem value="css">CSS</SelectItem>
+   475→                  <SelectItem value="json">JSON</SelectItem>
+   476→                </SelectContent>
+   477→              </Select>
+   478→            </div>
+   479→          </CardHeader>
+   480→          <div className="px-3 pb-2">
+   481→            <div className="relative">
+   482→              <Search className="absolute left-2.5 top-1/2 -translate-y-1/2 w-3.5 h-3.5 text-muted-foreground" />
+   483→              <Input
+   484→                value={searchQuery}
+   485→                onChange={(e) => setSearchQuery(e.target.value)}
+   486→                placeholder="Search artifacts..."
+   487→                className="bg-secondary border-border pl-8 text-xs h-8"
+   488→              />
+   489→            </div>
+   490→          </div>
+   491→          <ScrollArea className="flex-1">
+   492→            <div className="p-2 space-y-1">
+   493→              {artifacts.map((artifact) => {
+   494→                const Icon = typeIcons[artifact.type] || FileType;
+   495→                const isActive = selectedArtifact?.id === artifact.id;
+   496→                return (
+   497→                  <div
+   498→                    key={artifact.id}
+   499→                    className={`p-2.5 rounded-lg cursor-pointer transition-colors ${
+   500→                      isActive
+   501→                        ? 'bg-emerald-500/15 border border-emerald-500/30'
+   502→                        : 'hover:bg-accent border border-transparent'
+   503→                    }`}
+   504→                    onClick={() => selectArtifact(artifact)}
+   505→                  >
+   506→                    <div className="flex items-start gap-2">
+   507→                      <Icon className={`w-4 h-4 shrink-0 mt-0.5 ${isActive ? 'text-emerald-400' : 'text-muted-foreground'}`} />
+   508→                      <div className="flex-1 min-w-0">
+   509→                        <p className="text-xs font-medium truncate">{artifact.title}</p>
+   510→                        <div className="flex items-center gap-1.5 mt-1">
+   511→                          <Badge variant="outline" className={`text-[9px] ${typeColors[artifact.type] || ''}`}>
+   512→                            {artifact.type}
+   513→                          </Badge>
+   514→                          <Badge variant="outline" className={`text-[9px] ${statusColors[artifact.status] || ''}`}>
+   515→                            {artifact.status}
+   516→                          </Badge>
+   517→                        </div>
+   518→                        {artifact.agent && (
+   519→                          <p className="text-[9px] text-muted-foreground mt-1">
+   520→                            by {artifact.agent.avatar || '🤖'} {artifact.agent.name}
+   521→                          </p>
+   522→                        )}
+   523→                      </div>
+   524→                    </div>
+   525→                  </div>
+   526→                );
+   527→              })}
+   528→              {artifacts.length === 0 && (
+   529→                <div className="text-center py-8">
+   530→                  <FileCode2 className="w-8 h-8 text-muted-foreground/40 mx-auto mb-2" />
+   531→                  <p className="text-xs text-muted-foreground">No artifacts yet</p>
+   532→                  <p className="text-[10px] text-muted-foreground/60 mt-1">Create one or have an agent build something</p>
+   533→                </div>
+   534→              )}
+   535→            </div>
+   536→          </ScrollArea>
+   537→        </Card>
+   538→
+   539→        {/* Main Editor + Preview Area */}
+   540→        <Card className="flex-1 bg-card border-border flex flex-col overflow-hidden">
+   541→          {selectedArtifact ? (
+   542→            <>
+   543→              {/* Toolbar */}
+   544→              <div className="flex items-center justify-between p-3 border-b border-border">
+   545→                <div className="flex items-center gap-2">
+   546→                  {(() => { const Icon = typeIcons[selectedArtifact.type] || FileType; return <Icon className="w-4 h-4 text-emerald-400" />; })()}
+   547→                  {editMode ? (
+   548→                    <Input
+   549→                      value={editContent.title}
+   550→                      onChange={(e) => { setEditContent({ ...editContent, title: e.target.value }); setHasUnsavedChanges(true); }}
+   551→                      className="bg-secondary border-border text-sm h-7 max-w-64"
+   552→                    />
+   553→                  ) : (
+   554→                    <span className="text-sm font-medium">{selectedArtifact.title}</span>
+   555→                  )}
+   556→                  <Badge variant="outline" className={`text-[9px] ${typeColors[selectedArtifact.type] || ''}`}>
+   557→                    {selectedArtifact.type}
+   558→                  </Badge>
+   559→                  <Badge variant="outline" className={`text-[9px] ${statusColors[selectedArtifact.status] || ''}`}>
+   560→                    {selectedArtifact.status}
+   561→                  </Badge>
+   562→                  {hasUnsavedChanges && (
+   563→                    <Badge variant="outline" className="text-[9px] border-orange-500/30 text-orange-400">
+   564→                      Unsaved
+   565→                    </Badge>
+   566→                  )}
+   567→                  <span className="text-[9px] text-muted-foreground">v{selectedArtifact.version}</span>
+   568→                </div>
+   569→                <div className="flex items-center gap-1.5">
+   570→                  <Button
+   571→                    variant="ghost"
+   572→                    size="icon"
+   573→                    className="w-7 h-7"
+   574→                    onClick={copyContent}
+   575→                    title="Copy code"
+   576→                  >
+   577→                    {copied ? <Check className="w-3.5 h-3.5 text-emerald-400" /> : <Copy className="w-3.5 h-3.5" />}
+   578→                  </Button>
+   579→                  <Button
+   580→                    variant="ghost"
+   581→                    size="icon"
+   582→                    className="w-7 h-7"
+   583→                    onClick={openPreviewInNewTab}
+   584→                    title="Open in new tab"
+   585→                  >
+   586→                    <ExternalLink className="w-3.5 h-3.5" />
+   587→                  </Button>
+   588→                  {!editMode ? (
+   589→                    <Button
+   590→                      variant="ghost"
+   591→                      size="sm"
+   592→                      className="text-xs h-7"
+   593→                      onClick={() => setEditMode(true)}
+   594→                    >
+   595→                      <Code2 className="w-3.5 h-3.5 mr-1" /> Edit
+   596→                    </Button>
+   597→                  ) : (
+   598→                    <>
+   599→                      <Button
+   600→                        variant="ghost"
+   601→                        size="sm"
+   602→                        className="text-xs h-7 text-emerald-400"
+   603→                        onClick={updateArtifact}
+   604→                        disabled={!hasUnsavedChanges}
+   605→                      >
+   606→                        <Save className="w-3.5 h-3.5 mr-1" /> Save
+   607→                      </Button>
+   608→                      <Button
+   609→                        variant="ghost"
+   610→                        size="sm"
+   611→                        className="text-xs h-7"
+   612→                        onClick={() => {
+   613→                          setEditMode(false);
+   614→                          setEditContent({
+   615→                            title: selectedArtifact.title,
+   616→                            content: selectedArtifact.content,
+   617→                            type: selectedArtifact.type,
+   618→                            description: selectedArtifact.description || '',
+   619→                            tags: selectedArtifact.tags || '',
+   620→                          });
+   621→                          setHasUnsavedChanges(false);
+   622→                        }}
+   623→                      >
+   624→                        <X className="w-3.5 h-3.5 mr-1" /> Cancel
+   625→                      </Button>
+   626→                    </>
+   627→                  )}
+   628→                  <Button
+   629→                    variant="ghost"
+   630→                    size="icon"
+   631→                    className="w-7 h-7"
+   632→                    onClick={() => setIsFullscreen(!isFullscreen)}
+   633→                    title={isFullscreen ? 'Exit fullscreen' : 'Fullscreen preview'}
+   634→                  >
+   635→                    {isFullscreen ? <Minimize2 className="w-3.5 h-3.5" /> : <Maximize2 className="w-3.5 h-3.5" />}
+   636→                  </Button>
+   637→                  {selectedArtifact.status !== 'deployed' && (
+   638→                    <Button
+   639→                      variant="ghost"
+   640→                      size="sm"
+   641→                      className="text-xs h-7 text-cyan-400"
+   642→                      onClick={deployArtifact}
+   643→                    >
+   644→                      <Globe className="w-3.5 h-3.5 mr-1" /> Deploy
+   645→                    </Button>
+   646→                  )}
+   647→                  <Button
+   648→                    variant="ghost"
+   649→                    size="icon"
+   650→                    className="w-7 h-7 text-red-400"
+   651→                    onClick={() => deleteArtifact(selectedArtifact.id)}
+   652→                  >
+   653→                    <Trash2 className="w-3.5 h-3.5" />
+   654→                  </Button>
+   655→                </div>
+   656→              </div>
+   657→
+   658→              {/* Content Area */}
+   659→              {editMode ? (
+   660→                <div className="flex-1 flex overflow-hidden">
+   661→                  {/* Editor */}
+   662→                  <div className={`${activeTab === 'code' || !isFullscreen ? 'w-1/2' : 'w-0'} flex flex-col border-r border-border overflow-hidden`}>
+   663→                    <div className="flex items-center gap-1 px-3 py-1.5 border-b border-border bg-secondary/30">
+   664→                      <Code2 className="w-3 h-3 text-muted-foreground" />
+   665→                      <span className="text-[10px] text-muted-foreground">Source</span>
+   666→                      <span className="ml-auto text-[9px] text-muted-foreground">{editContent.content.length} chars</span>
+   667→                    </div>
+   668→                    <div className="flex items-center gap-2 px-3 py-1 border-b border-border bg-secondary/20">
+   669→                      <Select value={editContent.type} onValueChange={(v) => { setEditContent({ ...editContent, type: v }); setHasUnsavedChanges(true); }}>
+   670→                        <SelectTrigger className="bg-secondary border-border text-[10px] h-5 w-20">
+   671→                          <SelectValue />
+   672→                        </SelectTrigger>
+   673→                        <SelectContent className="bg-card border-border">
+   674→                          <SelectItem value="html">HTML</SelectItem>
+   675→                          <SelectItem value="react">React/JSX</SelectItem>
+   676→                          <SelectItem value="code">Code</SelectItem>
+   677→                          <SelectItem value="css">CSS</SelectItem>
+   678→                          <SelectItem value="json">JSON</SelectItem>
+   679→                          <SelectItem value="markdown">Markdown</SelectItem>
+   680→                          <SelectItem value="text">Text</SelectItem>
+   681→                        </SelectContent>
+   682→                      </Select>
+   683→                      <Button
+   684→                        variant="ghost"
+   685→                        size="sm"
+   686→                        className="text-[10px] h-5 text-emerald-400 hover:text-emerald-300 ml-auto"
+   687→                        onClick={generateArtifact}
+   688→                      >
+   689→                        <Sparkles className="w-3 h-3 mr-1" /> AI
+   690→                      </Button>
+   691→                    </div>
+   692→                    <Textarea
+   693→                      value={editContent.content}
+   694→                      onChange={(e) => { setEditContent({ ...editContent, content: e.target.value }); setHasUnsavedChanges(true); }}
+   695→                      className="flex-1 bg-transparent border-0 font-mono text-xs resize-none focus-visible:ring-0 p-4 rounded-none leading-relaxed"
+   696→                      placeholder="Write your code here..."
+   697→                    />
+   698→                  </div>
+   699→                  {/* Live Preview */}
+   700→                  <div className={`${isFullscreen ? 'flex-1' : 'w-1/2'} flex flex-col overflow-hidden`}>
+   701→                    <div className="flex items-center justify-between px-3 py-1.5 border-b border-border bg-secondary/30">
+   702→                      <div className="flex items-center gap-1">
+   703→                        <Eye className="w-3 h-3 text-muted-foreground" />
+   704→                        <span className="text-[10px] text-muted-foreground">Preview</span>
+   705→                      </div>
+   706→                      <div className="flex items-center gap-1">
+   707→                        <Button
+   708→                          variant="ghost"
+   709→                          size="icon"
+   710→                          className={`w-5 h-5 ${previewDevice === 'desktop' ? 'text-emerald-400' : 'text-muted-foreground'}`}
+   711→                          onClick={() => setPreviewDevice('desktop')}
+   712→                        >
+   713→                          <Monitor className="w-3 h-3" />
+   714→                        </Button>
+   715→                        <Button
+   716→                          variant="ghost"
+   717→                          size="icon"
+   718→                          className={`w-5 h-5 ${previewDevice === 'tablet' ? 'text-emerald-400' : 'text-muted-foreground'}`}
+   719→                          onClick={() => setPreviewDevice('tablet')}
+   720→                        >
+   721→                          <Tablet className="w-3 h-3" />
+   722→                        </Button>
+   723→                        <Button
+   724→                          variant="ghost"
+   725→                          size="icon"
+   726→                          className={`w-5 h-5 ${previewDevice === 'mobile' ? 'text-emerald-400' : 'text-muted-foreground'}`}
+   727→                          onClick={() => setPreviewDevice('mobile')}
+   728→                        >
+   729→                          <Smartphone className="w-3 h-3" />
+   730→                        </Button>
+   731→                        <Button
+   732→                          variant="ghost"
+   733→                          size="icon"
+   734→                          className="w-5 h-5 text-muted-foreground"
+   735→                          onClick={() => setPreviewKey(k => k + 1)}
+   736→                          title="Refresh preview"
+   737→                        >
+   738→                          <RefreshCw className="w-3 h-3" />
+   739→                        </Button>
+   740→                      </div>
+   741→                    </div>
+   742→                    <div className="flex-1 flex items-start justify-center bg-secondary/20 p-4 overflow-auto">
+   743→                      <div
+   744→                        className="bg-white rounded-lg shadow-lg overflow-hidden transition-all duration-300"
+   745→                        style={{
+   746→                          width: previewWidths[previewDevice],
+   747→                          maxWidth: '100%',
+   748→                          height: previewDevice === 'desktop' ? '100%' : previewDevice === 'tablet' ? '1024px' : '812px',
+   749→                          minHeight: '300px',
+   750→                        }}
+   751→                      >
+   752→                        <iframe
+   753→                          ref={iframeRef}
+   754→                          key={previewKey}
+   755→                          src={`/api/artifacts/${selectedArtifact.id}/preview`}
+   756→                          className="w-full h-full border-0"
+   757→                          sandbox="allow-scripts allow-same-origin"
+   758→                          title="Preview"
+   759→                        />
+   760→                      </div>
+   761→                    </div>
+   762→                  </div>
+   763→                </div>
+   764→              ) : (
+   765→                /* Read-only Preview Mode */
+   766→                <div className="flex-1 flex flex-col overflow-hidden">
+   767→                  <div className="flex items-center justify-between px-3 py-1.5 border-b border-border bg-secondary/30">
+   768→                    <div className="flex items-center gap-2">
+   769→                      <Tabs value={activeTab} onValueChange={(v) => setActiveTab(v as 'code' | 'preview')}>
+   770→                        <TabsList className="h-6 bg-secondary/50">
+   771→                          <TabsTrigger value="preview" className="text-[10px] h-5 px-2">
+   772→                            <Eye className="w-3 h-3 mr-1" /> Preview
+   773→                          </TabsTrigger>
+   774→                          <TabsTrigger value="code" className="text-[10px] h-5 px-2">
+   775→                            <Code2 className="w-3 h-3 mr-1" /> Code
+   776→                          </TabsTrigger>
+   777→                        </TabsList>
+   778→                      </Tabs>
+   779→                    </div>
+   780→                    <div className="flex items-center gap-1">
+   781→                      {activeTab === 'preview' && (
+   782→                        <>
+   783→                          <Button
+   784→                            variant="ghost"
+   785→                            size="icon"
+   786→                            className={`w-5 h-5 ${previewDevice === 'desktop' ? 'text-emerald-400' : 'text-muted-foreground'}`}
+   787→                            onClick={() => setPreviewDevice('desktop')}
+   788→                          >
+   789→                            <Monitor className="w-3 h-3" />
+   790→                          </Button>
+   791→                          <Button
+   792→                            variant="ghost"
+   793→                            size="icon"
+   794→                            className={`w-5 h-5 ${previewDevice === 'tablet' ? 'text-emerald-400' : 'text-muted-foreground'}`}
+   795→                            onClick={() => setPreviewDevice('tablet')}
+   796→                          >
+   797→                            <Tablet className="w-3 h-3" />
+   798→                          </Button>
+   799→                          <Button
+   800→                            variant="ghost"
+   801→                            size="icon"
+   802→                            className={`w-5 h-5 ${previewDevice === 'mobile' ? 'text-emerald-400' : 'text-muted-foreground'}`}
+   803→                            onClick={() => setPreviewDevice('mobile')}
+   804→                          >
+   805→                            <Smartphone className="w-3 h-3" />
+   806→                          </Button>
+   807→                          <Button
+   808→                            variant="ghost"
+   809→                            size="icon"
+   810→                            className="w-5 h-5 text-muted-foreground"
+   811→                            onClick={() => setPreviewKey(k => k + 1)}
+   812→                          >
+   813→                            <RefreshCw className="w-3 h-3" />
+   814→                          </Button>
+   815→                        </>
+   816→                      )}
+   817→                    </div>
+   818→                  </div>
+   819→
+   820→                  {activeTab === 'preview' ? (
+   821→                    <div className="flex-1 flex items-start justify-center bg-secondary/20 p-4 overflow-auto">
+   822→                      <div
+   823→                        className="bg-white rounded-lg shadow-lg overflow-hidden transition-all duration-300"
+   824→                        style={{
+   825→                          width: previewWidths[previewDevice],
+   826→                          maxWidth: '100%',
+   827→                          height: previewDevice === 'desktop' ? '100%' : previewDevice === 'tablet' ? '1024px' : '812px',
+   828→                          minHeight: '300px',
+   829→                        }}
+   830→                      >
+   831→                        <iframe
+   832→                          key={previewKey}
+   833→                          src={`/api/artifacts/${selectedArtifact.id}/preview`}
+   834→                          className="w-full h-full border-0"
+   835→                          sandbox="allow-scripts allow-same-origin"
+   836→                          title="Preview"
+   837→                        />
+   838→                      </div>
+   839→                    </div>
+   840→                  ) : (
+   841→                    <ScrollArea className="flex-1">
+   842→                      <pre className="p-4 text-xs font-mono leading-relaxed text-foreground/80 overflow-x-auto">
+   843→                        <code>{selectedArtifact.content}</code>
+   844→                      </pre>
+   845→                    </ScrollArea>
+   846→                  )}
+   847→                </div>
+   848→              )}
+   849→
+   850→              {/* Footer */}
+   851→              <div className="p-3 border-t border-border flex items-center justify-between">
+   852→                <div className="flex items-center gap-2">
+   853→                  {selectedArtifact.tags && selectedArtifact.tags.split(',').map((tag) => (
+   854→                    <Badge key={tag} variant="outline" className="text-[10px]">
+   855→                      {tag.trim()}
+   856→                    </Badge>
+   857→                  ))}
+   858→                </div>
+   859→                <div className="flex items-center gap-3 text-[10px] text-muted-foreground">
+   860→                  {selectedArtifact.agent && (
+   861→                    <div className="flex items-center gap-1">
+   862→                      <User className="w-3 h-3" />
+   863→                      {selectedArtifact.agent.avatar || '🤖'} {selectedArtifact.agent.name}
+   864→                    </div>
+   865→                  )}
+   866→                  <div className="flex items-center gap-1">
+   867→                    <Clock className="w-3 h-3" />
+   868→                    {new Date(selectedArtifact.updatedAt).toLocaleString()}
+   869→                  </div>
+   870→                  <div className="flex items-center gap-1">
+   871→                    <Braces className="w-3 h-3" />
+   872→                    v{selectedArtifact.version}
+   873→                  </div>
+   874→                </div>
+   875→              </div>
+   876→            </>
+   877→          ) : (
+   878→            <div className="flex flex-col items-center justify-center h-full text-muted-foreground">
+   879→              <Globe className="w-16 h-16 mb-4 text-emerald-500/30" />
+   880→              <h3 className="text-lg font-medium mb-2">Dev Server</h3>
+   881→              <p className="text-sm mb-1">Select an artifact to preview, or create a new one</p>
+   882→              <p className="text-xs text-muted-foreground/60 max-w-md text-center mt-2">
+   883→                Agents can create artifacts (HTML pages, React components, APIs) that render live here.
+   884→                Use the AI Generate button to auto-create content from descriptions.
+   885→              </p>
+   886→              <div className="flex items-center gap-3 mt-6">
+   887→                <Button
+   888→                  className="bg-emerald-600 hover:bg-emerald-700 text-white"
+   889→                  onClick={() => setCreateOpen(true)}
+   890→                >
+   891→                  <Plus className="w-4 h-4 mr-1.5" />
+   892→                  New Artifact
+   893→                </Button>
+   894→                <Button
+   895→                  variant="outline"
+   896→                  className="border-emerald-500/30 text-emerald-400 hover:bg-emerald-500/10"
+   897→                  onClick={() => {
+   898→                    setCreateOpen(true);
+   899→                    setNewArtifact({
+   900→                      title: '',
+   901→                      content: '',
+   902→                      type: 'html',
+   903→                      description: '',
+   904→                      tags: '',
+   905→                    });
+   906→                  }}
+   907→                >
+   908→                  <Sparkles className="w-4 h-4 mr-1.5" />
+   909→                  AI Generate
+   910→                </Button>
+   911→              </div>
+   912→            </div>
+   913→          )}
+   914→        </Card>
+   915→      </div>
+   916→    </div>
+   917→  );
+   918→}
+   919→

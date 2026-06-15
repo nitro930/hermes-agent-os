@@ -1,11 +1,15 @@
 import { db } from '@/lib/db';
 import { NextResponse } from 'next/server';
+import { parseCronExpression, getNextRun } from '@/lib/cron-parser';
 
 export async function POST() {
   try {
     await db.activityLog.deleteMany();
+    await db.cronExecution.deleteMany();
+    await db.cronJob.deleteMany();
     await db.message.deleteMany();
     await db.conversation.deleteMany();
+    await db.artifact.deleteMany();
     await db.delegate.deleteMany();
     await db.skill.deleteMany();
     await db.goal.deleteMany();
@@ -283,6 +287,12 @@ export async function POST() {
     ]);
 
     // Seed Goals
+    const futureDate = (monthsAhead: number) => {
+      const d = new Date();
+      d.setMonth(d.getMonth() + monthsAhead);
+      return d.toISOString().split('T')[0];
+    };
+
     await Promise.all([
       db.goal.create({
         data: {
@@ -292,7 +302,7 @@ export async function POST() {
           priority: 'high',
           progress: 75,
           agentId: agents[3].id,
-          dueDate: '2025-02-15',
+          dueDate: futureDate(2),
         },
       }),
       db.goal.create({
@@ -303,7 +313,7 @@ export async function POST() {
           priority: 'medium',
           progress: 40,
           agentId: agents[2].id,
-          dueDate: '2025-03-01',
+          dueDate: futureDate(3),
         },
       }),
       db.goal.create({
@@ -314,7 +324,7 @@ export async function POST() {
           priority: 'medium',
           progress: 20,
           agentId: agents[4].id,
-          dueDate: '2025-03-15',
+          dueDate: futureDate(4),
         },
       }),
       db.goal.create({
@@ -325,7 +335,7 @@ export async function POST() {
           priority: 'high',
           progress: 60,
           agentId: agents[1].id,
-          dueDate: '2025-02-28',
+          dueDate: futureDate(1),
         },
       }),
     ]);
@@ -366,6 +376,117 @@ export async function POST() {
           url: 'mcp://code-interpreter',
           status: 'connected',
           toolsCount: 3,
+        },
+      }),
+    ]);
+
+    // Seed Artifacts
+    await Promise.all([
+      db.artifact.create({
+        data: {
+          title: 'Landing Page',
+          description: 'A modern landing page with hero section and feature cards',
+          type: 'html',
+          content: `<div style="max-width: 900px; margin: 0 auto;">
+  <div style="text-align: center; padding: 3rem 1rem;">
+    <h1 style="font-size: 2.5rem; font-weight: 800; margin-bottom: 0.5rem; background: linear-gradient(135deg, #10b981, #6366f1); -webkit-background-clip: text; -webkit-text-fill-color: transparent;">
+      Hermes Agent OS
+    </h1>
+    <p style="font-size: 1.1rem; color: #64748b; max-width: 500px; margin: 0 auto 2rem;">
+      Your AI-powered command center for managing agents, automating workflows, and building intelligent applications.
+    </p>
+    <div style="display: flex; gap: 0.75rem; justify-content: center;">
+      <button style="padding: 0.75rem 1.5rem; background: #10b981; color: white; border: none; border-radius: 8px; font-weight: 600; font-size: 0.95rem; cursor: pointer;">
+        Get Started
+      </button>
+      <button style="padding: 0.75rem 1.5rem; background: transparent; color: #10b981; border: 2px solid #10b981; border-radius: 8px; font-weight: 600; font-size: 0.95rem; cursor: pointer;">
+        Documentation
+      </button>
+    </div>
+  </div>
+  <div style="display: grid; grid-template-columns: repeat(3, 1fr); gap: 1.25rem; padding: 1rem;">
+    <div class="card" style="padding: 1.5rem;">
+      <div style="font-size: 1.5rem; margin-bottom: 0.5rem;">🤖</div>
+      <h3 style="font-weight: 700; margin-bottom: 0.4rem;">Agent Management</h3>
+      <p style="color: #64748b; font-size: 0.85rem;">Create, configure, and monitor AI agents with unique personalities and skills.</p>
+    </div>
+    <div class="card" style="padding: 1.5rem;">
+      <div style="font-size: 1.5rem; margin-bottom: 0.5rem;">⚡</div>
+      <h3 style="font-weight: 700; margin-bottom: 0.4rem;">Automation Engine</h3>
+      <p style="color: #64748b; font-size: 0.85rem;">Event-driven workflows that trigger automatically based on your rules.</p>
+    </div>
+    <div class="card" style="padding: 1.5rem;">
+      <div style="font-size: 1.5rem; margin-bottom: 0.5rem;">🧠</div>
+      <h3 style="font-weight: 700; margin-bottom: 0.4rem;">Memory System</h3>
+      <p style="color: #64748b; font-size: 0.85rem;">Persistent knowledge storage that helps agents learn and improve over time.</p>
+    </div>
+  </div>
+</div>`,
+          status: 'ready',
+          agentId: agents[3].id,
+          tags: 'landing,homepage,demo',
+          isPublic: true,
+        },
+      }),
+      db.artifact.create({
+        data: {
+          title: 'Dashboard Widget',
+          description: 'A stats dashboard widget with live counters',
+          type: 'html',
+          content: `<div style="max-width: 700px; margin: 0 auto;">
+  <h2 style="font-size: 1.25rem; font-weight: 700; margin-bottom: 1rem;">System Dashboard</h2>
+  <div style="display: grid; grid-template-columns: repeat(4, 1fr); gap: 0.75rem; margin-bottom: 1.5rem;">
+    <div class="card" style="text-align: center; padding: 1.25rem;">
+      <div style="font-size: 1.75rem; font-weight: 800; color: #10b981;">5</div>
+      <div style="font-size: 0.75rem; color: #64748b;">Active Agents</div>
+    </div>
+    <div class="card" style="text-align: center; padding: 1.25rem;">
+      <div style="font-size: 1.75rem; font-weight: 800; color: #f59e0b;">12</div>
+      <div style="font-size: 0.75rem; color: #64748b;">Pending Tasks</div>
+    </div>
+    <div class="card" style="text-align: center; padding: 1.25rem;">
+      <div style="font-size: 1.75rem; font-weight: 800; color: #6366f1;">8</div>
+      <div style="font-size: 0.75rem; color: #64748b;">Skills</div>
+    </div>
+    <div class="card" style="text-align: center; padding: 1.25rem;">
+      <div style="font-size: 1.75rem; font-weight: 800; color: #ec4899;">4</div>
+      <div style="font-size: 0.75rem; color: #64748b;">Goals</div>
+    </div>
+  </div>
+  <div class="card" style="padding: 1rem;">
+    <h3 style="font-size: 0.85rem; font-weight: 600; margin-bottom: 0.75rem;">Recent Activity</h3>
+    <div style="display: flex; flex-direction: column; gap: 0.5rem;">
+      <div style="display: flex; align-items: center; gap: 0.5rem; font-size: 0.8rem;">
+        <span style="color: #10b981;">●</span> Hermes completed task "Design system architecture"
+      </div>
+      <div style="display: flex; align-items: center; gap: 0.5rem; font-size: 0.8rem;">
+        <span style="color: #f59e0b;">●</span> Research Agent started "Market analysis"
+      </div>
+      <div style="display: flex; align-items: center; gap: 0.5rem; font-size: 0.8rem;">
+        <span style="color: #6366f1;">●</span> New skill auto-learned: "Task Delegation"
+      </div>
+    </div>
+  </div>
+</div>`,
+          status: 'ready',
+          agentId: agents[0].id,
+          tags: 'dashboard,stats,widget',
+        },
+      }),
+      db.artifact.create({
+        data: {
+          title: 'API Config',
+          description: 'Agent API configuration schema',
+          type: 'json',
+          content: JSON.stringify({
+            apiVersion: "v1",
+            agents: { maxConcurrent: 5, defaultModel: "default", timeout: 30000 },
+            automation: { maxRetries: 3, retryDelay: 5000 },
+            memory: { maxEntries: 1000, autoCleanup: true, retentionDays: 90 }
+          }, null, 2),
+          status: 'ready',
+          agentId: agents[3].id,
+          tags: 'config,api,schema',
         },
       }),
     ]);
@@ -437,6 +558,66 @@ export async function POST() {
           action: 'MCP Server Connected',
           details: 'MCP server "Web Search" connected with 5 tools available',
           type: 'success',
+        },
+      }),
+    ]);
+
+    // Seed Cron Jobs
+    const hourlyFields = parseCronExpression('0 * * * *');
+    const dailyFields = parseCronExpression('0 9 * * *');
+    const weekdayFields = parseCronExpression('0 9 * * 1-5');
+    const fifteenMinFields = parseCronExpression('*/15 * * * *');
+
+    await Promise.all([
+      db.cronJob.create({
+        data: {
+          name: 'Hourly Health Check',
+          description: 'Runs a health check on all active agents every hour',
+          schedule: '0 * * * *',
+          timezone: 'UTC',
+          action: 'run_agent',
+          config: JSON.stringify({ agentId: agents[0].id, prompt: 'Check the status of all agents and report any issues. Provide a brief summary of system health.' }),
+          isActive: true,
+          isSystem: true,
+          agentId: agents[0].id,
+          nextRunAt: getNextRun(hourlyFields),
+        },
+      }),
+      db.cronJob.create({
+        data: {
+          name: 'Daily Standup Report',
+          description: 'Generates a daily standup report at 9 AM with task status and agent activity',
+          schedule: '0 9 * * *',
+          timezone: 'UTC',
+          action: 'create_task',
+          config: JSON.stringify({ taskTitle: 'Daily Standup Report', taskDescription: 'Generate and review the daily standup report', priority: 'medium' }),
+          isActive: true,
+          nextRunAt: getNextRun(dailyFields),
+        },
+      }),
+      db.cronJob.create({
+        data: {
+          name: 'Weekday Morning Briefing',
+          description: 'Sends a morning briefing to Hermes on weekdays at 9 AM',
+          schedule: '0 9 * * 1-5',
+          timezone: 'Europe/London',
+          action: 'send_message',
+          config: JSON.stringify({ agentId: agents[0].id, message: 'Good morning! Here is your weekday briefing. Please review pending tasks and priorities for the day.' }),
+          isActive: true,
+          agentId: agents[0].id,
+          nextRunAt: getNextRun(weekdayFields),
+        },
+      }),
+      db.cronJob.create({
+        data: {
+          name: 'System Metrics Pulse',
+          description: 'Every 15 minutes, log a system metrics notification',
+          schedule: '*/15 * * * *',
+          timezone: 'UTC',
+          action: 'notify',
+          config: JSON.stringify({ notificationTitle: 'Metrics Pulse', notificationMessage: '15-minute system metrics check completed' }),
+          isActive: false,
+          nextRunAt: null,
         },
       }),
     ]);

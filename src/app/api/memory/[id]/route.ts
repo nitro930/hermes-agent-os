@@ -1,5 +1,7 @@
 import { db } from '@/lib/db';
 import { NextRequest, NextResponse } from 'next/server';
+import { updateMemorySchema } from '@/lib/validations';
+import { ZodError } from 'zod';
 
 export async function PATCH(
   request: NextRequest,
@@ -8,13 +10,21 @@ export async function PATCH(
   try {
     const { id } = await params;
     const body = await request.json();
+    const validated = updateMemorySchema.parse(body);
+
     const memory = await db.memory.update({
       where: { id },
-      data: body,
+      data: validated,
       include: { agent: true },
     });
     return NextResponse.json(memory);
   } catch (error) {
+    if (error instanceof ZodError) {
+      return NextResponse.json(
+        { error: 'Validation failed', details: error.issues },
+        { status: 400 }
+      );
+    }
     console.error('Failed to update memory:', error);
     return NextResponse.json({ error: 'Failed to update memory' }, { status: 500 });
   }
