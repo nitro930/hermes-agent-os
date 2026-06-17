@@ -57,6 +57,25 @@ export async function getOpenRouterApiKey(): Promise<string | null> {
   return setting?.value || null;
 }
 
+/**
+ * Get the most specific OpenRouter API key available:
+ *   1. Team-level key (if agentId belongs to a team with a key set)
+ *   2. Global key from Settings
+ */
+export async function getOpenRouterApiKeyForAgent(agentId?: string | null): Promise<{ key: string | null; source: 'team' | 'global' | null }> {
+  if (agentId) {
+    const agent = await db.agent.findUnique({
+      where: { id: agentId },
+      select: { teamId: true, team: { select: { openRouterApiKey: true } } },
+    });
+    if (agent?.team?.openRouterApiKey) {
+      return { key: agent.team.openRouterApiKey, source: 'team' };
+    }
+  }
+  const globalKey = await getOpenRouterApiKey();
+  return { key: globalKey, source: globalKey ? 'global' : null };
+}
+
 /** Persist the OpenRouter API key. */
 export async function setOpenRouterApiKey(key: string): Promise<void> {
   await db.setting.upsert({
@@ -77,11 +96,11 @@ export async function setOpenRouterApiKey(key: string): Promise<void> {
 export async function runFusion(
   prompt: string,
   config: FusionConfig = {},
-  options: { systemPrompt?: string; previousMessages?: { role: 'user' | 'assistant' | 'system'; content: string }[] } = {},
+  options: { systemPrompt?: string; previousMessages?: { role: 'user' | 'assistant' | 'system'; content: string }[]; agentId?: string } = {},
 ): Promise<FusionResult> {
-  const apiKey = await getOpenRouterApiKey();
+  const { key: apiKey, source } = await getOpenRouterApiKeyForAgent(options.agentId);
   if (!apiKey) {
-    throw new Error('OpenRouter API key not configured. Set it in Settings → OpenRouter.');
+    throw new Error('OpenRouter API key not configured. Set it in Settings → OpenRouter or on the agent\'s Team.');
   }
 
   const startedAt = Date.now();

@@ -45,6 +45,7 @@ import {
   Lightbulb,
   EyeOff,
   Users,
+  Download,
 } from 'lucide-react';
 import { useToast } from '@/hooks/use-toast';
 import { RECOMMENDED_MODELS, FUSION_PRESETS } from '@/lib/openrouter-constants';
@@ -560,6 +561,16 @@ function RunDetail({ run, onClose, onDelete }: { run: FusionRun; onClose: () => 
             )}
           </div>
           <div className="flex items-center gap-1">
+            <Button variant="ghost" size="sm" asChild title="Export as Markdown">
+              <a href={`/api/fusion/runs/${run.id}/export?format=markdown`} download>
+                <Download className="w-4 h-4" />
+              </a>
+            </Button>
+            <Button variant="ghost" size="sm" asChild title="Export as JSON">
+              <a href={`/api/fusion/runs/${run.id}/export?format=json`} download>
+                <span className="text-[10px] font-mono">JSON</span>
+              </a>
+            </Button>
             <Button variant="ghost" size="sm" onClick={onClose}>
               <X className="w-4 h-4" />
             </Button>

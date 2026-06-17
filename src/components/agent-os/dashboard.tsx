@@ -28,6 +28,8 @@ import {
   HardDrive,
   Timer,
   XCircle,
+  Sparkles,
+  Coins,
 } from 'lucide-react';
 import {
   PieChart, Pie, Cell, BarChart, Bar, XAxis, YAxis, Tooltip, ResponsiveContainer, AreaChart, Area,
@@ -69,6 +71,23 @@ interface CronStatus {
   nextDue: { id: string; name: string; nextRunAt: string; action: string } | null;
 }
 
+interface FusionStats {
+  totalRuns: number;
+  successfulRuns: number;
+  failedRuns: number;
+  todayRuns: number;
+  weekRuns: number;
+  totalTokens: number;
+  weekCost: number;
+  todayCost: number;
+  avgLatencyMs: number;
+  successRate: number;
+  presetBreakdown: { preset: string; runs: number; cost: number; tokens: number }[];
+  spendTrend: { day: string; cost: number; tokens: number; runs: number }[];
+  topAgents: { agentId: string | null; agentName: string; runs: number; cost: number; tokens: number }[];
+  lastRun: { id: string; status: string; prompt: string; createdAt: string; tokens: number | null; cost: number | null } | null;
+}
+
 const statusColors: Record<string, string> = { idle: 'bg-slate-500', running: 'bg-emerald-500', error: 'bg-red-500', paused: 'bg-yellow-500' };
 const activityTypeColors: Record<string, string> = { info: 'text-blue-400', success: 'text-emerald-400', warning: 'text-yellow-400', error: 'text-red-400' };
 const activityTypeIcons: Record<string, React.ElementType> = { info: Clock, success: CheckCircle2, warning: AlertCircle, error: AlertCircle };
@@ -101,13 +120,15 @@ export function Dashboard() {
   const [activities, setActivities] = useState<ActivityItem[]>([]);
   const [skills, setSkills] = useState<Skill[]>([]);
   const [goals, setGoals] = useState<Goal[]>([]);
+  const [fusionStats, setFusionStats] = useState<FusionStats | null>(null);
   const [loading, setLoading] = useState(true);
 
   const loadData = useCallback(async () => {
     try {
-      const [statsRes, healthRes, cronRes, agentsRes, activityRes, skillsRes, goalsRes] = await Promise.all([
+      const [statsRes, healthRes, cronRes, agentsRes, activityRes, skillsRes, goalsRes, fusionRes] = await Promise.all([
         fetch('/api/stats'), fetch('/api/health'), fetch('/api/cron/status'),
         fetch('/api/agents'), fetch('/api/activity'), fetch('/api/skills?category=all'), fetch('/api/goals'),
+        fetch('/api/stats/fusion'),
       ]);
       if (statsRes.ok) setStats(await statsRes.json());
       if (healthRes.ok) setHealth(await healthRes.json());
@@ -116,6 +137,7 @@ export function Dashboard() {
       if (activityRes.ok) setActivities(await activityRes.json());
       if (skillsRes.ok) setSkills(await skillsRes.json());
       if (goalsRes.ok) setGoals(await goalsRes.json());
+      if (fusionRes.ok) setFusionStats(await fusionRes.json());
     } catch (error) { console.error('Failed to load dashboard:', error); }
     finally { setLoading(false); }
   }, []);
@@ -148,6 +170,8 @@ export function Dashboard() {
     { label: 'Goals', value: stats?.totalGoals ?? 0, icon: Target, color: 'text-orange-400' },
     { label: 'Memory', value: stats?.memoryEntries ?? 0, icon: Brain, color: 'text-blue-400' },
     { label: 'Cron Jobs', value: stats?.activeCronJobs ?? 0, icon: Clock, color: 'text-cyan-400' },
+    { label: 'Fusion Runs', value: fusionStats?.totalRuns ?? 0, icon: Sparkles, color: 'text-fuchsia-400' },
+    { label: 'Fusion Cost (7d)', value: `$${(fusionStats?.weekCost ?? 0).toFixed(4)}`, icon: Coins, color: 'text-amber-400' },
   ];
 
   const activeGoals = goals.filter(g => g.status === 'active');
@@ -377,6 +401,74 @@ export function Dashboard() {
           </CardContent>
         </Card>
       </div>
+
+      {/* Fusion Stats */}
+      {fusionStats && fusionStats.totalRuns > 0 && (
+        <div className="grid grid-cols-1 lg:grid-cols-3 gap-4">
+          <Card className="bg-card border-border lg:col-span-2">
+            <CardHeader className="pb-2">
+              <CardTitle className="text-sm font-semibold flex items-center gap-2">
+                <Sparkles className="w-4 h-4 text-fuchsia-400" /> Fusion Spend (14 days)
+              </CardTitle>
+            </CardHeader>
+            <CardContent className="p-4 pt-0">
+              <ResponsiveContainer width="100%" height={180}>
+                <AreaChart data={fusionStats.spendTrend}>
+                  <defs>
+                    <linearGradient id="fusionGradient" x1="0" y1="0" x2="0" y2="1">
+                      <stop offset="5%" stopColor="#d946ef" stopOpacity={0.3} />
+                      <stop offset="95%" stopColor="#d946ef" stopOpacity={0} />
+                    </linearGradient>
+                  </defs>
+                  <XAxis dataKey="day" tick={{ fontSize: 10, fill: '#64748b' }} axisLine={false} tickLine={false} tickFormatter={(d) => d.slice(5)} />
+                  <YAxis tick={{ fontSize: 10, fill: '#64748b' }} axisLine={false} tickLine={false} />
+                  <Tooltip content={<CustomTooltip />} />
+                  <Area type="monotone" dataKey="cost" name="Cost ($)" stroke="#d946ef" fill="url(#fusionGradient)" strokeWidth={2} />
+                </AreaChart>
+              </ResponsiveContainer>
+            </CardContent>
+          </Card>
+
+          <Card className="bg-card border-border">
+            <CardHeader className="pb-2">
+              <CardTitle className="text-sm font-semibold flex items-center gap-2">
+                <Coins className="w-4 h-4 text-amber-400" /> Fusion Health
+              </CardTitle>
+            </CardHeader>
+            <CardContent className="p-4 pt-0 space-y-2 text-xs">
+              <div className="flex items-center justify-between">
+                <span className="text-muted-foreground">Success rate</span>
+                <span className="font-medium text-emerald-400">{fusionStats.successRate.toFixed(1)}%</span>
+              </div>
+              <div className="flex items-center justify-between">
+                <span className="text-muted-foreground">Today</span>
+                <span className="font-medium">{fusionStats.todayRuns} runs · ${(fusionStats.todayCost || 0).toFixed(4)}</span>
+              </div>
+              <div className="flex items-center justify-between">
+                <span className="text-muted-foreground">7 days</span>
+                <span className="font-medium">{fusionStats.weekRuns} runs · ${(fusionStats.weekCost || 0).toFixed(4)}</span>
+              </div>
+              <div className="flex items-center justify-between">
+                <span className="text-muted-foreground">Avg latency</span>
+                <span className="font-medium">{(fusionStats.avgLatencyMs / 1000).toFixed(1)}s</span>
+              </div>
+              <div className="flex items-center justify-between">
+                <span className="text-muted-foreground">Total tokens</span>
+                <span className="font-medium">{fusionStats.totalTokens.toLocaleString()}</span>
+              </div>
+              {fusionStats.lastRun && (
+                <div className="pt-2 border-t border-border">
+                  <p className="text-muted-foreground mb-1">Last run</p>
+                  <p className="line-clamp-1">{fusionStats.lastRun.prompt}</p>
+                  <p className="text-[10px] text-muted-foreground mt-1">
+                    {new Date(fusionStats.lastRun.createdAt).toLocaleString()} · {fusionStats.lastRun.status}
+                  </p>
+                </div>
+              )}
+            </CardContent>
+          </Card>
+        </div>
+      )}
 
       {/* Agent Status Grid + Activity Feed */}
       <div className="grid grid-cols-1 lg:grid-cols-3 gap-4">

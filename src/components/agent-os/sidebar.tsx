@@ -22,6 +22,7 @@ import {
   Search,
   Globe,
   Sparkles,
+  Coins,
 } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Separator } from '@/components/ui/separator';
@@ -45,6 +46,7 @@ const navItems: { view: ActiveView; label: string; icon: React.ElementType }[] =
   { view: 'voice', label: 'Voice', icon: Mic },
   { view: 'mcp', label: 'MCP', icon: Plug },
   { view: 'fusion', label: 'Fusion', icon: Sparkles },
+  { view: 'usage', label: 'Usage', icon: Coins },
 ];
 
 export function Sidebar() {

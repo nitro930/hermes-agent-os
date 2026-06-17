@@ -80,16 +80,48 @@ export async function POST(request: NextRequest) {
 
     let assistantMessage: string;
     try {
-      const ZAI = (await import('z-ai-web-dev-sdk')).default;
-      const zai = await ZAI.create();
-      const completion = await zai.chat.completions.create({
-        messages: [
-          { role: 'system', content: enrichedSystemPrompt },
-          ...previousMessages,
-          { role: 'user', content: message },
-        ],
-      });
-      assistantMessage = completion.choices[0]?.message?.content || 'No response generated.';
+      // If the agent has a non-default model set, route through OpenRouter.
+      // Otherwise fall back to the bundled ZAI SDK.
+      if (agent.model && agent.model !== 'default') {
+        const { getOpenRouterApiKey } = await import('@/lib/openrouter');
+        const apiKey = await getOpenRouterApiKey();
+        if (!apiKey) {
+          throw new Error('OpenRouter API key not configured for agent model');
+        }
+        const orRes = await fetch('https://openrouter.ai/api/v1/chat/completions', {
+          method: 'POST',
+          headers: {
+            Authorization: `Bearer ${apiKey}`,
+            'Content-Type': 'application/json',
+            'HTTP-Referer': 'https://hermes-agent-os.local',
+            'X-Title': 'Hermes Agent OS',
+          },
+          body: JSON.stringify({
+            model: agent.model,
+            messages: [
+              { role: 'system', content: enrichedSystemPrompt },
+              ...previousMessages,
+              { role: 'user', content: message },
+            ],
+          }),
+        });
+        if (!orRes.ok) {
+          throw new Error(`OpenRouter ${orRes.status}: ${await orRes.text()}`);
+        }
+        const orData = await orRes.json();
+        assistantMessage = orData.choices?.[0]?.message?.content || 'No response generated.';
+      } else {
+        const ZAI = (await import('z-ai-web-dev-sdk')).default;
+        const zai = await ZAI.create();
+        const completion = await zai.chat.completions.create({
+          messages: [
+            { role: 'system', content: enrichedSystemPrompt },
+            ...previousMessages,
+            { role: 'user', content: message },
+          ],
+        });
+        assistantMessage = completion.choices[0]?.message?.content || 'No response generated.';
+      }
     } catch {
       assistantMessage = `Hello! I'm ${agent.name}. I received your message but I'm currently operating in offline mode. How else can I help you?`;
     }

@@ -15,6 +15,7 @@ import { GoalsView } from '@/components/agent-os/goals-view';
 import { VoiceView } from '@/components/agent-os/voice-view';
 import { McpView } from '@/components/agent-os/mcp-view';
 import { FusionView } from '@/components/agent-os/fusion-view';
+import { UsageView } from '@/components/agent-os/usage-view';
 import { DevView } from '@/components/agent-os/dev-view';
 import { ErrorBoundary } from '@/components/agent-os/error-boundary';
 import { CommandPalette } from '@/components/agent-os/command-palette';
@@ -48,6 +49,8 @@ function ViewRenderer() {
       return <McpView />;
     case 'fusion':
       return <FusionView />;
+    case 'usage':
+      return <UsageView />;
     case 'dev':
       return <DevView />;
     default:

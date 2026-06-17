@@ -1,8 +1,8 @@
 import { create } from 'zustand';
 
-export type ActiveView = 'dashboard' | 'agents' | 'chat' | 'memory' | 'tasks' | 'automations' | 'teams' | 'skills' | 'goals' | 'voice' | 'mcp' | 'dev' | 'fusion';
+export type ActiveView = 'dashboard' | 'agents' | 'chat' | 'memory' | 'tasks' | 'automations' | 'teams' | 'skills' | 'goals' | 'voice' | 'mcp' | 'dev' | 'fusion' | 'usage';
 
-export const VALID_VIEWS: ActiveView[] = ['dashboard', 'agents', 'chat', 'memory', 'tasks', 'automations', 'teams', 'skills', 'goals', 'voice', 'mcp', 'dev', 'fusion'];
+export const VALID_VIEWS: ActiveView[] = ['dashboard', 'agents', 'chat', 'memory', 'tasks', 'automations', 'teams', 'skills', 'goals', 'voice', 'mcp', 'dev', 'fusion', 'usage'];
 
 /** Read the initial view from the URL hash (e.g. #agents) */
 function getInitialView(): ActiveView {

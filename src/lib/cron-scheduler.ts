@@ -360,6 +360,94 @@ async function executeAction(action: string, config: Record<string, unknown>): P
       };
     }
 
+    case 'fusion': {
+      // Cron-triggered OpenRouter Fusion deliberation.
+      // Config: { prompt: string, preset?: 'general-high' | 'general-budget',
+      //           analysisModels?: string[], judgeModel?: string,
+      //           finalModel?: string, maxToolCalls?: number,
+      //           agentId?: string, saveMemory?: boolean }
+      const prompt = config.prompt as string;
+      if (!prompt) throw new Error('prompt is required for fusion action');
+
+      // Lazy import to avoid pulling OpenRouter client into the scheduler hot path.
+      const { runFusion } = await import('./openrouter');
+      const fusionConfig: any = {};
+      if (config.preset) fusionConfig.preset = config.preset;
+      if (Array.isArray(config.analysisModels)) fusionConfig.analysisModels = config.analysisModels;
+      if (config.judgeModel) fusionConfig.judgeModel = config.judgeModel;
+      if (config.finalModel) fusionConfig.finalModel = config.finalModel;
+      if (config.maxToolCalls) fusionConfig.maxToolCalls = Number(config.maxToolCalls);
+
+      // Optional agent context — pull system prompt + recent memories
+      let systemPrompt: string | undefined;
+      if (config.agentId) {
+        const agent = await db.agent.findUnique({
+          where: { id: config.agentId as string },
+          include: { memories: { take: 5, orderBy: { updatedAt: 'desc' }, where: { isPinned: true } } },
+        });
+        if (agent) {
+          const memoryContext = agent.memories.length > 0
+            ? `\n\n## Pinned Memories\n${agent.memories.map((m) => `- ${m.title}: ${m.content.slice(0, 200)}`).join('\n')}`
+            : '';
+          systemPrompt = (agent.systemPrompt || `You are ${agent.name}.`) + memoryContext;
+        }
+      }
+
+      const result = await runFusion(prompt, fusionConfig, { systemPrompt });
+
+      // Persist the Fusion run (linked to the agent if provided)
+      const fusionRun = await db.fusionRun.create({
+        data: {
+          prompt,
+          status: 'success',
+          preset: (config.preset as string) || null,
+          analysisModels: Array.isArray(config.analysisModels) ? JSON.stringify(config.analysisModels) : null,
+          judgeModel: (config.judgeModel as string) || null,
+          finalModel: fusionConfig.finalModel || 'openrouter/fusion',
+          finalAnswer: result.finalAnswer,
+          judgeAnalysis: result.judgeAnalysis ? JSON.stringify(result.judgeAnalysis) : null,
+          totalTokens: result.totalTokens ?? null,
+          totalCost: result.totalCost ?? null,
+          latencyMs: result.latencyMs,
+          agentId: (config.agentId as string) || null,
+        },
+      });
+
+      // Optionally save the result as a memory entry
+      if (config.saveMemory && config.agentId) {
+        const title = `Fusion: ${prompt.slice(0, 60)}${prompt.length > 60 ? '...' : ''}`;
+        await db.memory.create({
+          data: {
+            title,
+            content: result.finalAnswer,
+            type: 'reference',
+            folder: 'Fusion',
+            tags: 'fusion,cron,auto-saved',
+            agentId: config.agentId as string,
+          },
+        });
+      }
+
+      // Audit log
+      await db.activityLog.create({
+        data: {
+          action: 'Fusion Run (cron)',
+          details: `Fusion deliberation completed in ${result.latencyMs}ms · ${result.totalTokens ?? 0} tokens`,
+          type: 'success',
+          agentId: (config.agentId as string) || null,
+          agentName: 'Cron Scheduler',
+        },
+      });
+
+      return {
+        fusionRunId: fusionRun.id,
+        tokens: result.totalTokens,
+        cost: result.totalCost,
+        latencyMs: result.latencyMs,
+        answer: result.finalAnswer.slice(0, 500),
+      };
+    }
+
     default:
       throw new Error(`Unknown action: ${action}`);
   }

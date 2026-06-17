@@ -130,11 +130,13 @@ export function middleware(request: NextRequest) {
         pathname.includes('/generate') ||
         pathname.includes('/asr') ||
         pathname.includes('/tts');
+      const isFusionEndpoint = pathname.includes('/fusion/');
+      const isWebhook = pathname.includes('/webhook');
 
       const isSSEStream = pathname.includes('/stream') || pathname.includes('/live');
 
       // SSE streams are long-lived — rate limit the connection, not per-event
-      const limit = isAIEndpoint ? 20 : isSSEStream ? 30 : 100;
+      const limit = isFusionEndpoint ? 10 : isWebhook ? 30 : isAIEndpoint ? 20 : isSSEStream ? 30 : 100;
       const windowMs = 60000; // 1 minute window
 
       if (!rateLimit(ip, limit, windowMs)) {

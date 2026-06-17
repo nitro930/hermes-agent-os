@@ -313,6 +313,31 @@ export function AgentsView() {
                 </Select>
               </div>
               <div className="space-y-2">
+                <Label>Model (OpenRouter)</Label>
+                <Select value={newAgent.model} onValueChange={(v) => setNewAgent({ ...newAgent, model: v })}>
+                  <SelectTrigger className="bg-secondary border-border">
+                    <SelectValue />
+                  </SelectTrigger>
+                  <SelectContent className="bg-card border-border">
+                    <SelectItem value="default">Default (bundled SDK)</SelectItem>
+                    <SelectItem value="openrouter/fusion">openrouter/fusion (multi-model deliberation)</SelectItem>
+                    <SelectItem value="~anthropic/claude-opus-latest">Claude Opus (latest)</SelectItem>
+                    <SelectItem value="~anthropic/claude-sonnet-latest">Claude Sonnet (latest)</SelectItem>
+                    <SelectItem value="~openai/gpt-latest">GPT (latest)</SelectItem>
+                    <SelectItem value="~openai/gpt-4o">GPT-4o</SelectItem>
+                    <SelectItem value="~google/gemini-pro-latest">Gemini Pro (latest)</SelectItem>
+                    <SelectItem value="~google/gemini-2.0-flash">Gemini 2.0 Flash</SelectItem>
+                    <SelectItem value="~meta-llama/llama-3.3-70b-instruct">Llama 3.3 70B</SelectItem>
+                    <SelectItem value="~mistral/mistral-large">Mistral Large</SelectItem>
+                    <SelectItem value="~deepseek/deepseek-chat">DeepSeek Chat</SelectItem>
+                    <SelectItem value="~x-ai/grok-2">Grok 2</SelectItem>
+                  </SelectContent>
+                </Select>
+                <p className="text-[10px] text-muted-foreground">
+                  Pick "Default" for the bundled ZAI SDK, or any OpenRouter model to route through your OpenRouter key.
+                </p>
+              </div>
+              <div className="space-y-2">
                 <Label>System Prompt</Label>
                 <Textarea
                   value={newAgent.systemPrompt}
