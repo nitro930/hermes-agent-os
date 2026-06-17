@@ -21,6 +21,7 @@ import {
   Bell,
   Search,
   Globe,
+  Sparkles,
 } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Separator } from '@/components/ui/separator';
@@ -43,6 +44,7 @@ const navItems: { view: ActiveView; label: string; icon: React.ElementType }[] =
   { view: 'goals', label: 'Goals', icon: Target },
   { view: 'voice', label: 'Voice', icon: Mic },
   { view: 'mcp', label: 'MCP', icon: Plug },
+  { view: 'fusion', label: 'Fusion', icon: Sparkles },
 ];
 
 export function Sidebar() {

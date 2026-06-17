@@ -13,7 +13,7 @@ import {
   SelectTrigger,
   SelectValue,
 } from '@/components/ui/select';
-import { Send, Plus, MessageSquare, Bot, User, Trash2, Mic, Volume2 } from 'lucide-react';
+import { Send, Plus, MessageSquare, Bot, User, Trash2, Mic, Volume2, Sparkles } from 'lucide-react';
 import { useToast } from '@/hooks/use-toast';
 import ReactMarkdown from 'react-markdown';
 
@@ -54,6 +54,7 @@ export function ChatView() {
   const [loading, setLoading] = useState(true);
   const [isListening, setIsListening] = useState(false);
   const [isSpeaking, setIsSpeaking] = useState(false);
+  const [useFusion, setUseFusion] = useState(false);
   const messagesEndRef = useRef<HTMLDivElement>(null);
   const mediaRecorderRef = useRef<MediaRecorder | null>(null);
   const audioChunksRef = useRef<Blob[]>([]);
@@ -247,30 +248,64 @@ export function ChatView() {
     setMessages((prev) => [...prev, tempUserMsg]);
 
     try {
-      const res = await fetch('/api/chat', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          agentId: selectedAgentId,
-          message: userMessage,
-          conversationId: selectedConversationId || undefined,
-        }),
-      });
-
-      if (res.ok) {
-        const data = await res.json();
-        if (!selectedConversationId) {
-          setSelectedConversationId(data.conversationId);
-          loadConversations();
+      if (useFusion) {
+        // Route through OpenRouter Fusion: panel + judge + final answer
+        const fusionRes = await fetch('/api/fusion/run', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            prompt: userMessage,
+            preset: 'general-high',
+            finalModel: 'openrouter/fusion',
+            agentId: selectedAgentId,
+          }),
+        });
+        const fusionData = await fusionRes.json();
+        if (!fusionRes.ok) {
+          throw new Error(fusionData.error || 'Fusion failed');
         }
+        const assistantContent =
+          fusionData.run?.finalAnswer || 'Fusion returned no answer.';
         setMessages((prev) => [
           ...prev.filter((m) => m.id !== tempUserMsg.id),
-          { id: `user-${data.message?.id}`, role: 'user', content: userMessage, createdAt: new Date().toISOString() },
-          data.message,
+          { id: `user-${Date.now()}`, role: 'user', content: userMessage, createdAt: new Date().toISOString() },
+          {
+            id: `fusion-${fusionData.run?.id || Date.now()}`,
+            role: 'assistant',
+            content: `**⚡ Fusion deliberation** (panel + judge)\n\n${assistantContent}\n\n*Full breakdown available in the Fusion view.*`,
+            createdAt: new Date().toISOString(),
+          },
         ]);
+        toast({
+          title: 'Fusion deliberation complete',
+          description: `${fusionData.run?.totalTokens ?? 0} tokens · ${((fusionData.run?.latencyMs ?? 0) / 1000).toFixed(1)}s`,
+        });
       } else {
-        toast({ title: 'Failed to send message', variant: 'destructive' });
-        setMessages((prev) => prev.filter((m) => m.id !== tempUserMsg.id));
+        const res = await fetch('/api/chat', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            agentId: selectedAgentId,
+            message: userMessage,
+            conversationId: selectedConversationId || undefined,
+          }),
+        });
+
+        if (res.ok) {
+          const data = await res.json();
+          if (!selectedConversationId) {
+            setSelectedConversationId(data.conversationId);
+            loadConversations();
+          }
+          setMessages((prev) => [
+            ...prev.filter((m) => m.id !== tempUserMsg.id),
+            { id: `user-${data.message?.id}`, role: 'user', content: userMessage, createdAt: new Date().toISOString() },
+            data.message,
+          ]);
+        } else {
+          toast({ title: 'Failed to send message', variant: 'destructive' });
+          setMessages((prev) => prev.filter((m) => m.id !== tempUserMsg.id));
+        }
       }
     } catch {
       toast({ title: 'Failed to send message', variant: 'destructive' });
@@ -478,6 +513,15 @@ export function ChatView() {
               title={isListening ? 'Stop listening' : 'Voice input'}
             >
               <Mic className="w-4 h-4" />
+            </Button>
+            <Button
+              variant="ghost"
+              size="icon"
+              className={`shrink-0 ${useFusion ? 'text-fuchsia-400 bg-fuchsia-500/10' : 'text-muted-foreground hover:text-fuchsia-400'}`}
+              onClick={() => setUseFusion((v) => !v)}
+              title={useFusion ? 'Fusion ON — click to disable' : 'Use Fusion (multi-model deliberation via OpenRouter)'}
+            >
+              <Sparkles className="w-4 h-4" />
             </Button>
             <Input
               value={input}

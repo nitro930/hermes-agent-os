@@ -27,6 +27,7 @@ model Agent {
   delegates   Delegate[]
   artifacts   Artifact[]
   cronJobs    CronJob[]
+  fusionRuns  FusionRun[]
   createdAt   DateTime @default(now())
   updatedAt   DateTime @updatedAt
 
@@ -286,4 +287,49 @@ model CronExecution {
   @@index([cronJobId])
   @@index([status])
   @@index([startedAt])
+}
+
+model Setting {
+  id    String   @id
+  value String
+  updatedAt DateTime @updatedAt
+}
+
+model FusionRun {
+  id            String   @id @default(cuid())
+  prompt        String
+  status        String   @default("pending") // pending, running, success, failed
+  preset        String?  // general-high, general-budget, or null
+  analysisModels String? // JSON array of model slugs used in panel
+  judgeModel    String?
+  finalModel    String?  // model that wrote the final answer
+  finalAnswer   String?  
+  judgeAnalysis String?   // JSON: consensus, contradictions, blind_spots, unique_insights
+  totalTokens   Int?
+  totalCost     Float?
+  latencyMs     Int?
+  errorMessage  String?
+  agentId       String?
+  agent         Agent?   @relation(fields: [agentId], references: [id], onDelete: SetNull)
+  panelResponses FusionPanelResponse[]
+  createdAt     DateTime @default(now())
+  updatedAt     DateTime @updatedAt
+
+  @@index([agentId])
+  @@index([status])
+  @@index([createdAt])
+}
+
+model FusionPanelResponse {
+  id            String   @id @default(cuid())
+  fusionRunId   String
+  fusionRun     FusionRun @relation(fields: [fusionRunId], references: [id], onDelete: Cascade)
+  modelSlug     String
+  response      String   
+  tokensUsed    Int?
+  latencyMs     Int?
+  sources       String?  // JSON array of URLs the model cited via web_search
+  createdAt     DateTime @default(now())
+
+  @@index([fusionRunId])
 }
